@@ -9,6 +9,13 @@ import googleapiclient.errors
 
 import psycopg2
 
+descriptionLength = 5000
+titleLength = 100
+tagLength = 300
+channelNameLength = 100
+categoryLength = 200
+
+
 def parseISOTimestamp(isoString):
 	match = re.match(r"(\d+)-(\d+)-(\d+)T(\d+):(\d+):([0123456789.]+)Z", isoString)
 
@@ -70,7 +77,7 @@ def handleResponses(jsonResponses, channels, category):
 			"INSERT INTO categories (id, name) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
 			(
 				category["id"],
-				category["snippet"]["title"],
+				category["snippet"]["title"][:categoryLength],
 			)
 		)
 
@@ -87,7 +94,7 @@ def handleResponses(jsonResponses, channels, category):
 				"INSERT INTO channels (id, name, views, subscribers, videos) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET (name, views, subscribers, videos) = (EXCLUDED.name, EXCLUDED.views, EXCLUDED.subscribers, EXCLUDED.videos);",
 				(
 					channel["id"],
-					channel["name"],
+					channel["name"][:channelNameLength],
 					channel["views"],
 					channel["subscribers"],
 					channel["videos"],
@@ -102,8 +109,8 @@ def handleResponses(jsonResponses, channels, category):
 					"INSERT INTO videos (id, title, description, thumbnail, duration, posted_time) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;",
 					(
 						video["id"],
-						video["snippet"]["title"],
-						video["snippet"]["description"],
+						video["snippet"]["title"][:titleLength],
+						video["snippet"]["description"][:descriptionLength],
 						video["snippet"]["thumbnails"][thumbnailResolution]["url"],
 						parseDuration(video["contentDetails"]["duration"]),
 						video["snippet"]["publishedAt"],
@@ -135,7 +142,7 @@ def handleResponses(jsonResponses, channels, category):
 						cursor.execute(
 							"INSERT INTO tags (tag) VALUES (%s) ON CONFLICT DO NOTHING;",
 							(
-								tag,
+								tag[:tagLength],
 							)
 						)
 
@@ -143,7 +150,7 @@ def handleResponses(jsonResponses, channels, category):
 							"INSERT INTO has_tag (video_id, tag) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
 							(
 								video["id"],
-								tag,
+								tag[:tagLength],
 							)
 						)
 				except KeyError:
