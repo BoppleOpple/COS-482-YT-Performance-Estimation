@@ -1,0 +1,8 @@
+.venv/
+database/
+output/
+
+.env
+*.aux
+*.log
+*.pdf
