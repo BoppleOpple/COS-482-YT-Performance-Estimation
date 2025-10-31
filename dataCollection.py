@@ -204,15 +204,19 @@ def main():
 
 		while (videoRequest != None):
 			print(f"fetching video page {page}")
-			videoResponse = videoRequest.execute()
-			
-			videoResponses.append(videoResponse)
+			try:
+				videoResponse = videoRequest.execute()
+				
+				videoResponses.append(videoResponse)
 
-			videoRequest = youtube.videos().list_next(
-				previous_request=videoRequest,
-				previous_response=videoResponse
-			)
-			page += 1
+				videoRequest = youtube.videos().list_next(
+					previous_request=videoRequest,
+					previous_response=videoResponse
+				)
+				page += 1
+			except googleapiclient.errors.HttpError:
+				print("http error???")
+				break
 		
 		channels = []
 		channelIDs = []
