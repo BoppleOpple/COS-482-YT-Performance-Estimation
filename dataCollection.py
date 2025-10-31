@@ -238,6 +238,8 @@ def main():
 		request.execute()
 		print(f"Collected data from YT in category {category["snippet"]["title"]} ({categoryNumber}/{len(categories)})")
 
+		categoryNumber += 1
+
 		handleResponses(videoResponses, channels, category)
 
 if __name__ == "__main__":
