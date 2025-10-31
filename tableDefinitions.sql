@@ -17,7 +17,7 @@ CREATE TABLE channels (
 
 CREATE TABLE categories (
 	id integer PRIMARY KEY,
-	name varchar(100)
+	name varchar(200)
 );
 
 CREATE TABLE queries (
@@ -28,7 +28,7 @@ CREATE TABLE queries (
 );
 
 CREATE TABLE tags (
-	tag varchar(100) PRIMARY KEY
+	tag varchar(300) PRIMARY KEY
 );
 
 CREATE TABLE created_by (
@@ -63,7 +63,7 @@ CREATE INDEX idx_vid ON access_information(video_id);
 
 CREATE TABLE has_tag (
 	video_id varchar(20),
-	tag varchar(100),
+	tag varchar(300),
 	CONSTRAINT fk_video_id FOREIGN KEY (video_id) REFERENCES videos(id) DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_tag FOREIGN KEY (tag) REFERENCES tags(tag) DEFERRABLE INITIALLY DEFERRED,
 	PRIMARY KEY (video_id, tag)
