@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import datetime
 from dotenv import load_dotenv
 
@@ -15,6 +16,19 @@ tagLength = 300
 channelNameLength = 100
 categoryLength = 200
 
+
+def waitUntilTime(timeStr):
+	targetHours, targetMinutes, targetSeconds = map(lambda s: float(s), timeStr.split(":")[:3])
+
+	print(targetHours, targetMinutes, targetSeconds)
+
+	_, _, _, hours, minutes, seconds, *_ = time.localtime()
+
+	secondsRemaining = (((targetHours - hours) * 60 + targetMinutes - minutes) * 60 + targetSeconds - seconds) % (24 * 60 * 60)
+
+	print(f"Time remaining: {int(secondsRemaining / (60 * 60) % 24)}:{int(secondsRemaining / 60 % 60)}:{int(secondsRemaining % 60)}")
+
+	time.sleep(secondsRemaining)
 
 def parseISOTimestamp(isoString):
 	match = re.match(r"(\d+)-(\d+)-(\d+)T(\d+):(\d+):([0123456789.]+)Z", isoString)
@@ -243,4 +257,5 @@ def main():
 		handleResponses(videoResponses, channels, category)
 
 if __name__ == "__main__":
-	main()
+	waitUntilTime("15:00:00")
+	# main()
