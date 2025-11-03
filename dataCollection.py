@@ -26,7 +26,7 @@ def waitUntilTime(timeStr):
 
 	secondsRemaining = (((targetHours - hours) * 60 + targetMinutes - minutes) * 60 + targetSeconds - seconds) % (24 * 60 * 60)
 
-	print(f"Time remaining: {int(secondsRemaining / (60 * 60) % 24)}:{int(secondsRemaining / 60 % 60)}:{int(secondsRemaining % 60)}")
+	print(f"Time remaining: {int(secondsRemaining / (60 * 60) % 24):02}:{int(secondsRemaining / 60 % 60):02}:{int(secondsRemaining % 60):02}")
 
 	time.sleep(secondsRemaining)
 
@@ -258,4 +258,4 @@ def main():
 
 if __name__ == "__main__":
 	waitUntilTime("15:00:00")
-	# main()
+	main()
