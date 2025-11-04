@@ -56,7 +56,10 @@ def parseDuration(durationString):
 	return 3600 * hours + 60 * minutes + seconds
 
 def handleChannelResponse(rid, response, exception, channelIDs):
-	if (response["pageInfo"]["totalResults"] != 0):
+
+	if exception: print(exception)
+	
+	if (response and response["pageInfo"]["totalResults"] != 0):
 		return {
 			"id": response["items"][0]["id"],
 			"name": response["items"][0]["snippet"]["title"],
