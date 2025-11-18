@@ -22,7 +22,7 @@ def main():
 	with dbConnection.cursor() as cursor:
 		
 		cursor.execute(
-			"SELECT id, thumbnail FROM videos LIMIT 5;"
+			"SELECT id, thumbnail FROM videos;"
 		)
 		result = cursor.fetchall()
 
