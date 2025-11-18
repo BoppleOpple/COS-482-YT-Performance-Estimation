@@ -1,6 +1,7 @@
 .venv/
 database/
 output/
+out.txt
 
 .env
 *.aux

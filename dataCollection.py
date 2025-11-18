@@ -260,5 +260,6 @@ def main():
 		handleResponses(videoResponses, channels, category)
 
 if __name__ == "__main__":
-	waitUntilTime("15:00:00")
-	main()
+	while True:
+		waitUntilTime("15:00:00")
+		main()
