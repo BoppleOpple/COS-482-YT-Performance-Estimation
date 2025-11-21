@@ -1,0 +1,9 @@
+python-dotenv
+google-api-python-client
+psycopg2
+tqdm
+requests
+torch
+torchvision
+matplotlib
+numpy
