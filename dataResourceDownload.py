@@ -1,5 +1,5 @@
 import os
-import tqdm
+from tqdm import tqdm
 from dotenv import load_dotenv
 import requests
 
@@ -34,7 +34,7 @@ def main():
 	for thumbnailData in tqdm(result):
 		thumbnailRequest = requests.get(thumbnailData[1])
 
-		extension = thumbnailData[1][thumbnailData[1].rindex("."):]
+		extension = thumbnailData[1][thumbnailData[1].rindex(".")+1:]
 
 		with open(f"{outdir}/{thumbnailData[0]}.{extension}", "wb") as f:
 			f.write(thumbnailRequest.content)
