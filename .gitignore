@@ -2,6 +2,7 @@
 database/
 output/
 out.txt
+__pycache__
 
 .env
 *.aux
