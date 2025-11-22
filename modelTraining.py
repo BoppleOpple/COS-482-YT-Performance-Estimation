@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 import torch
 from torch.utils.data import Dataset
 
+import matplotlib.pyplot as plt
+
 import PIL.Image
 
 import dataResourceDownload
@@ -15,6 +17,8 @@ from ansi import *
 
 class YTDataset (Dataset):
 	images = dict()
+	secondsDifference = np.vectorize(lambda duration: duration.total_seconds())
+	imageSize = (640, 480)
 
 	def __init__(self, imageDir = "./output/thumbnails"):
 		dbConnection: psycopg2.extensions.connection = psycopg2.connect(
@@ -51,7 +55,7 @@ class YTDataset (Dataset):
 				if brokenThumbnailImage == image:
 					invalidThumbnails.append(vid)
 				else:
-					self.images[vid] = np.array(image)
+					self.images[vid] = np.array(image.resize(self.imageSize))
 
 		# Download data from the database
 		with dbConnection.cursor() as cursor:
@@ -82,28 +86,73 @@ class YTDataset (Dataset):
 	def __getitem__(self, idx):
 		row = self.data[idx]
 
-		inputImage = self.images[row[0]]
+		if len(row.shape) > 1:
+			inputImages = np.apply_along_axis(lambda r: self.images[r[0]], 1, row)
 
-		print()
-		print(inputImage.shape)
+			inputData = np.array((
+				self.secondsDifference(row[:,2] - row[:,1]), # time since posting
+				row[:,3]
+			))
+			outputData = row[:,-3:]
+			
+			return inputImages, inputData, outputData
+		else:
+			inputImage = self.images[row[0]]
 
-		inputData = np.array((
-			int((row[2] - row[1]).total_seconds()), # time since posting
-			int(row[3])
-		))
-		
-		outputData = np.array((row[-3], row[-2], row[-1]))
+			inputData = np.array((
+				int((row[2] - row[1]).total_seconds()), # time since posting
+				int(row[3])
+			))
+			
+			outputData = row[-3:]
 
-		return inputImage, inputData, outputData
+			return inputImage, inputData, outputData
+
+
+def show_grid(size, images, text=None, filename=None):
+	figure, axs = plt.subplots(nrows=size[0], ncols=size[1])
+	# figure.tight_layout()
+	figure.set_size_inches(size[1]*3, size[0]*3)
+
+	for i in range(len(axs)):
+		for j in range(len(axs[i])):
+			axs[i][j].imshow(images[i*len(axs[i]) + j])
+			axs[i][j].set_xticks([])
+			axs[i][j].set_yticks([])
+			if text:
+				axs[i][j].set_title(text[i*len(axs[i]) + j])
+	
+	plt.show()
+	
+	if filename:
+		plt.savefig(filename, dpi=500)
+
 
 if __name__ == "__main__":
 	load_dotenv()
 	device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-	print(f"{getANSI("bold", "magenta")}running torch on {device}{resetANSI()}")
+	print(f"{getANSI("bold", "bright_magenta")}running torch on {device}{resetANSI()}")
 
 	dataset = YTDataset()
 
-	print()
-	print(f"{getANSI("bold", "magenta")}dataset loaded with {len(dataset)} entries{resetANSI()}")
+	datasetLoadedStatement = f"dataset loaded with {len(dataset)} entries"
 
-	print(dataset[0])
+	print(getANSI("bold", "bright_magenta"))
+	print(f"+-{"".join(["-" for c in datasetLoadedStatement])}-+")
+	print(f"| {"".join([" " for c in datasetLoadedStatement])} |")
+	print(f"| {datasetLoadedStatement} |")
+	print(f"| {"".join([" " for c in datasetLoadedStatement])} |")
+	print(f"+-{"".join(["-" for c in datasetLoadedStatement])}-+{resetANSI()}")
+
+	# print()
+	# print(dataset[0])
+
+	# print()
+	# print(dataset[0][0])
+
+	# print()
+	# print(dataset[:9][0])
+
+	subset = dataset[:1000]
+
+	show_grid((3, 3), subset[:9][0])
