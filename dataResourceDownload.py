@@ -1,4 +1,5 @@
 import os
+from threading import Thread
 from tqdm import tqdm
 from dotenv import load_dotenv
 import requests
@@ -6,6 +7,18 @@ import requests
 import psycopg2
 
 outdir = "./output/thumbnails"
+
+def downloadThumbnail(vid, url):
+	extension = url[url.rindex(".")+1:]
+	outfile = f"{outdir}/{vid}.{extension}"
+
+	if not os.path.exists(outfile):
+		thumbnailRequest = requests.get(url)
+
+		with open(outfile, "wb") as f:
+			f.write(thumbnailRequest.content)
+
+		thumbnailRequest.close()
 
 def main():
 	load_dotenv()
@@ -30,16 +43,17 @@ def main():
 	dbConnection.close()
 
 	os.makedirs(outdir, exist_ok=True)
+	threads = []
 
+	print("creating threads...")
 	for thumbnailData in tqdm(result):
-		thumbnailRequest = requests.get(thumbnailData[1])
-
-		extension = thumbnailData[1][thumbnailData[1].rindex(".")+1:]
-
-		with open(f"{outdir}/{thumbnailData[0]}.{extension}", "wb") as f:
-			f.write(thumbnailRequest.content)
-
-		thumbnailRequest.close()
+		thread = Thread(target=downloadThumbnail, args=thumbnailData)
+		threads.append(thread)
+		thread.start()
+	
+	print("joining threads...")
+	for thread in tqdm(threads):
+		thread.join()
 
 if __name__ == "__main__":
 	main()
