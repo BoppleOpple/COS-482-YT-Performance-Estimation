@@ -1,6 +1,7 @@
 import os
 import psycopg2
 import datetime
+from threading import Thread
 from tqdm import tqdm
 import numpy as np
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ class YTDataset (Dataset):
 	images = dict()
 	secondsDifference = np.vectorize(lambda duration: duration.total_seconds())
 	imageSize = (640, 480)
+	brokenThumbnailImage: PIL.ImageFile.ImageFile = PIL.Image.open("res/brokenThumbnail.jpg")
 
 	def __init__(self, imageDir = "./output/thumbnails"):
 		dbConnection: psycopg2.extensions.connection = psycopg2.connect(
@@ -42,20 +44,20 @@ class YTDataset (Dataset):
 		
 		invalidThumbnails = []
 
-		brokenThumbnailImage: PIL.ImageFile.ImageFile = PIL.Image.open("res/brokenThumbnail.jpg")
+		print()
+		print(f"{getANSI("bold", "bright_blue")}loading thumbnails (creating threads)...{resetANSI()}")
+
+		# find thumbnails
+		threads = []
+		for vid in tqdm(videoIDs):
+			thread = Thread(target=self.loadImage, args=(vid, imageDir))
+			threads.append(thread)
+			thread.start()
 
 		print()
-		print(f"{getANSI("bold", "bright_blue")}loading thumbnails...{resetANSI()}")
-		# find thumbnails
-		for vid in tqdm(videoIDs):
-			if vid not in self.images:
-				imagePath = f"{imageDir}/{vid}.jpg"
-				image: PIL.ImageFile.ImageFile = PIL.Image.open(imagePath)
-
-				if brokenThumbnailImage == image:
-					invalidThumbnails.append(vid)
-				else:
-					self.images[vid] = np.array(image.resize(self.imageSize))
+		print(f"{getANSI("bold", "bright_blue")}loading thumbnails (joining threads)...{resetANSI()}")
+		for thread in tqdm(threads):
+			thread.join()
 
 		# Download data from the database
 		with dbConnection.cursor() as cursor:
@@ -71,7 +73,9 @@ class YTDataset (Dataset):
 			result = cursor.fetchall()
 			print()
 			print(f"{getANSI("bold", "bright_blue")}filtering data...{resetANSI()}")
-			self.data = np.array(list(filter(lambda data: data[0] not in invalidThumbnails, tqdm(result))))
+			rawData: np.ndarray = np.array(list(filter(lambda data: data[0] in self.images, tqdm(result))))
+
+		self.data = np.concat((rawData[:,0:1], self.secondsDifference(rawData[:,2:3] - rawData[:,1:2]), rawData[:,3:4], rawData[:,-3:]), 1)
 		print()
 		print(self.data.shape)
 		print(self.data[:5])
@@ -84,29 +88,18 @@ class YTDataset (Dataset):
 		return len(self.data)
 
 	def __getitem__(self, idx):
-		row = self.data[idx]
+		if type(idx) is int:
+			idx = slice(idx, idx+1)
+		selectedImages = np.apply_along_axis(lambda r: self.images[r[0]], 1, self.data[idx])
 
-		if len(row.shape) > 1:
-			inputImages = np.apply_along_axis(lambda r: self.images[r[0]], 1, row)
+		return selectedImages, self.data[idx,1:-3], self.data[idx,-3:]
+	
+	def loadImage(self, vid, imageDir):
+		imagePath = f"{imageDir}/{vid}.jpg"
+		image: PIL.ImageFile.ImageFile = PIL.Image.open(imagePath)
 
-			inputData = np.array((
-				self.secondsDifference(row[:,2] - row[:,1]), # time since posting
-				row[:,3]
-			))
-			outputData = row[:,-3:]
-			
-			return inputImages, inputData, outputData
-		else:
-			inputImage = self.images[row[0]]
-
-			inputData = np.array((
-				int((row[2] - row[1]).total_seconds()), # time since posting
-				int(row[3])
-			))
-			
-			outputData = row[-3:]
-
-			return inputImage, inputData, outputData
+		if not self.brokenThumbnailImage == image:
+			self.images[vid] = np.array(image.resize(self.imageSize))
 
 
 def show_grid(size, images, text=None, filename=None):
@@ -152,7 +145,8 @@ if __name__ == "__main__":
 
 	# print()
 	# print(dataset[:9][0])
-
+	print(dataset[1000])
 	subset = dataset[:1000]
+	print(subset[0].shape)
 
 	show_grid((3, 3), subset[:9][0])
