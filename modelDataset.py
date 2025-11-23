@@ -62,7 +62,7 @@ class YTDataset (Dataset):
 			result = cursor.fetchall()
 			print()
 			print(f"{getANSI("bold", "bright_blue")}filtering data...{resetANSI()}")
-			rawData: np.ndarray = np.array(list(filter(lambda data: validThumbnail(self.imageDir, data[0]), tqdm(result))))
+			rawData: np.ndarray = np.array(list(filter(lambda data: validThumbnail(self.imageDir, data[0]) and np.all(data), tqdm(result))))
 
 		self.thumbnailIDs = rawData[:,0:1]
 
@@ -73,6 +73,8 @@ class YTDataset (Dataset):
 			rawData[:,3:4].astype(np.float32),
 			rawData[:,-3:].astype(np.float32)
 		), 1)
+
+		self.data = (self.data - np.mean(self.data, 0)) / np.std(self.data, 0)
 
 		print()
 		print(self.data.shape)
@@ -112,7 +114,7 @@ class YTDataset (Dataset):
 	def loadImage(self, vid, output = None, i = 0):
 		imagePath = f"{self.imageDir}/{vid}.jpg"
 		image = PIL.Image.open(imagePath)
-		result = mplToNp(np.array(image.resize(self.imageSize), dtype=np.float32))
+		result = mplToNp(np.array(image.resize(self.imageSize), dtype=np.float32) / 255)
 
 		if output is not None:
 			output[i] = result
