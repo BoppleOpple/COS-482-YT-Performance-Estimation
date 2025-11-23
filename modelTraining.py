@@ -2,6 +2,8 @@ import os
 from tqdm import tqdm
 import numpy as np
 import time
+import re
+import argparse
 
 import torch
 import torchvision
@@ -14,10 +16,21 @@ import matplotlib.pyplot as plt
 from modelDataset import *
 from ansi import *
 
-BATCH_SIZE = 20
-EPOCHS = 5
-STARTING_EPOCH = 1
-CONTINUE = False
+parser = argparse.ArgumentParser(
+	prog="python3 modelTraining.py",
+	description="Trains a neural network on YouTube data",
+	epilog="Copyright Liam Hillery, 2025"
+)
+
+parser.add_argument_group("File I/O")
+parser.add_argument("-i", "--imageDir", default="./output/thumbnails")
+parser.add_argument("-o", "--outDir", default="./output")
+parser.add_argument("-s", "--starting-weights", default=None, type=str)
+
+parser.add_argument_group("Training options")
+parser.add_argument("-e", "--epochs", default=5, type=int)
+parser.add_argument("-b", "--batch-size", default=20, type=int)
+parser.add_argument("-v", "--validation-only", action="store_true") # TODO: not yet implemented
 
 class ThumbnailModel (torch.nn.Module):
 	def __init__(self, w, h):
@@ -85,7 +98,7 @@ def show_grid(size, images, text=None, filename=None):
 		plt.savefig(filename, dpi=500)
 
 # epoch function based on the default provided by pytorch
-def train_one_epoch(model, dataLoader, criterion, optimizer, scheduler):
+def train_one_epoch(model, dataLoader, criterion, optimizer, scheduler, device):
 	running_loss = 0.
 
 	batch = 1
@@ -120,6 +133,7 @@ def train_one_epoch(model, dataLoader, criterion, optimizer, scheduler):
 
 	return running_loss / len(dataLoader)
 
+# TODO: give consistent naming scheme
 def getNumParams(model):
 	pp=0
 	for p in list(model.parameters()):
@@ -129,14 +143,13 @@ def getNumParams(model):
 		pp += nn
 	return pp
 
+def main(argv = None):
+	args = parser.parse_args(argv)
 
-
-if __name__ == "__main__":
-	load_dotenv()
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 	print(f"{getANSI("bold", "bright_magenta")}running torch on {device}{resetANSI()}")
 
-	dataset = YTDataset()
+	dataset = YTDataset(args.imageDir)
 
 	rng = torch.Generator().manual_seed(1)
 	trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
@@ -157,8 +170,8 @@ if __name__ == "__main__":
 
 	# show_grid((4, 6), subset[:9][0])
 
-	trainingDataLoader = DataLoader(trainingSet, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-	testingDataLoader = DataLoader(testingSet, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+	trainingDataLoader = DataLoader(trainingSet, batch_size=args.batch_size, shuffle=True, num_workers=0)
+	testingDataLoader = DataLoader(testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0)
 
 	model = ThumbnailModel(*dataset.imageSize).to(device)
 	print(getNumParams(model))
@@ -172,32 +185,45 @@ if __name__ == "__main__":
 	criterion = torch.nn.MSELoss()
 	# criterion = torch.nn.L1Loss()
 
-	optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
-	# optimizer = Adam(model.parameters(), lr=1e-4)
+	# optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
+	optimizer = Adam(model.parameters(), lr=1e-4)
 
 	scheduler = ExponentialLR(optimizer, gamma=0.9)
 
-	# print(train_one_epoch(model, trainingDataLoader, criterion, optimizer, scheduler))
-	# print(train_one_epoch(model, trainingDataLoader, criterion, optimizer, scheduler))
-
 	losses, v_losses = [], []
 
-	os.makedirs("states", exist_ok=True)
+	os.makedirs(f"{args.outDir}/states", exist_ok=True)
 
 	# set to True to resume from a specified epoch
-	if CONTINUE:
-		start = STARTING_EPOCH
-		model.load_state_dict(torch.load(f'{MODEL_LOAD_PATH}epoch_{start+1}.pt', map_location=device))
-	else:
-		start = 0
+	start = 0
 
+	if args.starting_weights:
+		# attempt to derive epoch number from filename
+		match = re.match(r".*epoch_(\d+)\.pt", args.starting_weights)
+
+		if re.match(r"", args.starting_weights):
+			start = match.group(1)
+
+		# load weights
+		model.load_state_dict(torch.load(f"{args.starting_weights}epoch_{start+1}.pt", map_location=device))
+
+	# TODO THE REASON TESTING < TRAINING IS THAT ITS ONLY TAKEN AT THE BEST ITERATION
 	# training loop, based on the one provided by pytorch
-	for epoch in range(start, EPOCHS):
+	for epoch in range(start, args.epochs):
 		print(f"{getANSI("bold", "yellow")}-=-=-=-=- EPOCH {epoch + 1} -=-=-=-=-{resetANSI()}")
+
 		print("training...")
 		# Make sure gradient tracking is on, and do a pass over the data
 		model.train(True)
-		avg_loss = train_one_epoch(model, trainingDataLoader, criterion, optimizer, scheduler)
+
+		avg_loss = train_one_epoch(
+			model,
+			trainingDataLoader,
+			criterion,
+			optimizer,
+			scheduler,
+			device
+		)
 		losses.append(avg_loss)
 
 
@@ -225,19 +251,25 @@ if __name__ == "__main__":
 		print(f"Testing loss (MSE): {avg_vloss}")
 
 		# finally, save the model params for future reference
-		torch.save(model.state_dict(), f"states/epoch_{epoch + 1}.pt")
+		torch.save(model.state_dict(), f"{args.outDir}/states/epoch_{epoch + 1}.pt")
 	
 	# retrieve losses from gpu and plot them
 	v_losses = [l.cpu() for l in v_losses]
 
 	currentTime = time.localtime()
 
-	with open(f'output/losses_{currentTime.tm_year}-{currentTime.tm_mon}-{currentTime.tm_mday}_[{currentTime.tm_hour}-{currentTime.tm_min}-{currentTime.tm_sec}].csv', 'w') as f:
-		fileBody = 'loss,val loss\n'
+	with open(f"{args.outDir}/losses_{currentTime.tm_year}-{currentTime.tm_mon}-{currentTime.tm_mday}_[{currentTime.tm_hour}-{currentTime.tm_min}-{currentTime.tm_sec}].csv", "w") as f:
+		fileBody = "loss,val loss\n"
 		for i in range(len(losses)):
-			fileBody += f'{losses[i]},{v_losses[i]}\n'
+			fileBody += f"{losses[i]},{v_losses[i]}\n"
 		f.write(fileBody)
 
-	plt.plot(range(len(v_losses)), v_losses, label='validation', color='#fa96c8')
-	plt.plot(range(len(losses)), losses, label='training', color='#6496fa')
+	plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
+	plt.plot(range(len(losses)), losses, label="training", color="#6496fa")
 	plt.legend()
+
+	plt.show()
+
+
+if __name__ == "__main__":
+	main()
