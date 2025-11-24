@@ -8,52 +8,53 @@ import psycopg2
 
 outdir = "./output/thumbnails"
 
-def downloadThumbnail(vid, url):
-	extension = url[url.rindex(".")+1:]
-	outfile = f"{outdir}/{vid}.{extension}"
 
-	if not os.path.exists(outfile):
-		thumbnailRequest = requests.get(url)
+def downloadThumbnail(vid: str, url: str):
+    extension = url.split(".")[-1]
+    outfile = f"{outdir}/{vid}.{extension}"
 
-		with open(outfile, "wb") as f:
-			f.write(thumbnailRequest.content)
+    if not os.path.exists(outfile):
+        thumbnailRequest = requests.get(url)
 
-		thumbnailRequest.close()
+        with open(outfile, "wb") as f:
+            f.write(thumbnailRequest.content)
+
+        thumbnailRequest.close()
+
 
 def main():
-	load_dotenv()
+    load_dotenv()
 
-	dbConnection = psycopg2.connect(
-		host=os.environ["SQL_HOST"],
-		port=os.environ["SQL_PORT"],
-		dbname=os.environ["SQL_DBNAME"],
-		user=os.environ["SQL_USER"],
-		password=os.environ["SQL_PASSWORD"]
-	)
+    dbConnection = psycopg2.connect(
+        host=os.environ["SQL_HOST"],
+        port=os.environ["SQL_PORT"],
+        dbname=os.environ["SQL_DBNAME"],
+        user=os.environ["SQL_USER"],
+        password=os.environ["SQL_PASSWORD"],
+    )
 
-	result = None
-	with dbConnection.cursor() as cursor:
-		
-		cursor.execute(
-			"SELECT id, thumbnail FROM videos;"
-		)
-		result = cursor.fetchall()
+    result = None
+    with dbConnection.cursor() as cursor:
 
-	dbConnection.commit()
-	dbConnection.close()
+        cursor.execute("SELECT id, thumbnail FROM videos;")
+        result = cursor.fetchall()
 
-	os.makedirs(outdir, exist_ok=True)
-	threads = []
+    dbConnection.commit()
+    dbConnection.close()
 
-	print("creating threads...")
-	for thumbnailData in tqdm(result):
-		thread = Thread(target=downloadThumbnail, args=thumbnailData)
-		threads.append(thread)
-		thread.start()
-	
-	print("joining threads...")
-	for thread in tqdm(threads):
-		thread.join()
+    os.makedirs(outdir, exist_ok=True)
+    threads = []
+
+    print("creating threads...")
+    for thumbnailData in tqdm(result):
+        thread = Thread(target=downloadThumbnail, args=thumbnailData)
+        threads.append(thread)
+        thread.start()
+
+    print("joining threads...")
+    for thread in tqdm(threads):
+        thread.join()
+
 
 if __name__ == "__main__":
-	main()
+    main()
