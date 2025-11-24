@@ -232,6 +232,8 @@ def main(argv=None):
             fileBody += f"{losses[i]},{v_losses[i]}\n"
         f.write(fileBody)
 
+    plt.figure()
+
     plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
     plt.plot(range(len(losses)), losses, label="training", color="#6496fa")
     plt.legend()
