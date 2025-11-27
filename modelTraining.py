@@ -6,7 +6,7 @@ import argparse
 
 import torch
 from torch.utils.data import DataLoader, random_split, default_collate
-from torch.optim import SGD
+from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
 import matplotlib.pyplot as plt
@@ -34,7 +34,7 @@ parser.add_argument(
 )  # TODO: not yet implemented
 
 
-def show_grid(size, images, text=None, filename=None):
+def showGrid(size, images, text=None, filename=None):
     figure, axs = plt.subplots(nrows=size[0], ncols=size[1])
     figure.tight_layout()
     figure.set_size_inches(size[1] * 3, size[0] * 3)
@@ -54,7 +54,14 @@ def show_grid(size, images, text=None, filename=None):
 
 
 # epoch function based on the default provided by pytorch
-def train_one_epoch(model, dataLoader, criterion, optimizer, scheduler, device):
+def trainOnce(
+    model: torch.nn.Module,
+    dataLoader: DataLoader,
+    criterion: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.Any,
+    device: torch.device,
+):
     running_loss = 0.0
 
     batch = 1
@@ -90,7 +97,6 @@ def train_one_epoch(model, dataLoader, criterion, optimizer, scheduler, device):
     return running_loss / len(dataLoader)
 
 
-# TODO: give consistent naming scheme
 def getNumParams(model):
     pp = 0
     for p in list(model.parameters()):
@@ -128,7 +134,7 @@ def main(argv=None):
     print(dataset[0][0].shape)
     print(subset[0].shape)
 
-    # show_grid((4, 6), subset[:9][0])
+    # showGrid((4, 6), subset[:9][0])
 
     trainingDataLoader = DataLoader(
         trainingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
@@ -151,8 +157,8 @@ def main(argv=None):
     criterion = torch.nn.MSELoss()
     # criterion = torch.nn.L1Loss()
 
-    optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
-    # optimizer = Adam(model.parameters(), lr=1e-4)
+    # optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
+    optimizer = Adam(model.parameters(), lr=1e-4)
 
     scheduler = ExponentialLR(optimizer, gamma=0.9)
 
@@ -187,7 +193,7 @@ def main(argv=None):
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
 
-        avg_loss = train_one_epoch(
+        avg_loss = trainOnce(
             model, trainingDataLoader, criterion, optimizer, scheduler, device
         )
         losses.append(avg_loss)

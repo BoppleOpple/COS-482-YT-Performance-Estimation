@@ -5,6 +5,8 @@ import torchvision
 class ThumbnailModel(torch.nn.Module):
     def __init__(self, w, h):
         super().__init__()
+        self.nonLinear = torch.nn.ReLU()
+
         # mobilenet v2
         pretrainedMobileNet = torchvision.models.mobilenet_v2(weights="IMAGENET1K_V2")
 
@@ -39,9 +41,9 @@ class ThumbnailModel(torch.nn.Module):
         layer5 = self.flatten(layer4)
         # print(f"layer5: {layer5.shape}")
 
-        layer6 = self.fc1(layer5)
+        layer6 = self.nonLinear(self.fc1(layer5))
         # print(f"layer6: {layer6.shape}")
-        layer7 = self.fc2(layer6)
+        layer7 = self.nonLinear(self.fc2(layer6))
         # print(f"layer7: {layer7.shape}")
         layer8 = self.fc3(layer7)
         # print(f"layer8: {layer8.shape}")
