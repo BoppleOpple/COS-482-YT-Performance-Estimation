@@ -16,6 +16,7 @@ channelNameLength = 100
 categoryLength = 200
 
 
+# region waitUntilTime
 def waitUntilTime(timeStr):
     targetHours, targetMinutes, targetSeconds = map(
         lambda s: float(s), timeStr.split(":")[:3]
@@ -41,12 +42,10 @@ def waitUntilTime(timeStr):
     time.sleep(secondsRemaining)
 
 
-def parseISOTimestamp(isoString):
-    match = re.match(r"(\d+)-(\d+)-(\d+)T(\d+):(\d+):([0123456789.]+)Z", isoString)
-
-    return match.groups()
+# endregion
 
 
+# region parseDuration
 def parseDuration(durationString):
     hourMatch = re.search(r"\d+(?=H)", durationString)
     minuteMatch = re.search(r"\d+(?=M)", durationString)
@@ -68,6 +67,10 @@ def parseDuration(durationString):
     return 3600 * hours + 60 * minutes + seconds
 
 
+# endregion
+
+
+# region handleChannelResponse
 def handleChannelResponse(rid, response, exception, channelIDs):
 
     if exception:
@@ -95,6 +98,10 @@ def handleChannelResponse(rid, response, exception, channelIDs):
         }
 
 
+# endregion
+
+
+# region handleResponses
 def handleResponses(jsonResponses, channels, category):
     queryTime = datetime.datetime.now(datetime.UTC).isoformat()
     # queryTime = "2025-10-29 01:12:28"
@@ -244,6 +251,10 @@ def handleResponses(jsonResponses, channels, category):
     dbConnection.close()
 
 
+# endregion
+
+
+# region Main Execution
 def main():
     load_dotenv()
 
@@ -337,7 +348,12 @@ def main():
         handleResponses(videoResponses, channels, category)
 
 
+# endregion
+
+
+# region Entry Point
 if __name__ == "__main__":
     while True:
         waitUntilTime("15:00:00")
         main()
+# endregion

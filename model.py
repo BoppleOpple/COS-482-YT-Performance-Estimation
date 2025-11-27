@@ -2,7 +2,10 @@ import torch
 import torchvision
 
 
+# region ThumbnailModel
 class ThumbnailModel(torch.nn.Module):
+
+    # region __init__
     def __init__(self, w, h):
         super().__init__()
         self.nonLinear = torch.nn.ReLU()
@@ -26,6 +29,9 @@ class ThumbnailModel(torch.nn.Module):
 
         self.float()
 
+    # endregion
+
+    # region forward
     def forward(self, x: torch.Tensor):
         layer0 = self.featureExtraction1(x)
         # print(f"layer0: {layer0.shape}")
@@ -50,6 +56,7 @@ class ThumbnailModel(torch.nn.Module):
 
         return layer8
 
+    # endregion
 
-if __name__ == "__main__":
-    exit(0)
+
+# endregion

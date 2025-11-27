@@ -1,3 +1,4 @@
+# region Partial ANSI Table
 ansiCodes = {
     "normal": "0",
     "bold": "1",
@@ -19,12 +20,21 @@ ansiCodes = {
     "bright_cyan": "96",
     "bright_white": "97",
 }
+# endregion
 
 
+# region getANSI
 def getANSI(*args):
     ansiCodes = ";".join([ansiCodes[arg] for arg in args])
     return f"\033[{ansiCodes}m"
 
 
+# endregion
+
+
+# region resetANSI
 def resetANSI():
     return getANSI("black", "normal")
+
+
+# endregion

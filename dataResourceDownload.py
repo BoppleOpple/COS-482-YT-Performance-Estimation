@@ -10,6 +10,7 @@ outdir = "./output/thumbnails"
 maxRequests = Semaphore(1024)
 
 
+# region downloadThumbnail
 def downloadThumbnail(vid: str, url: str):
     extension = url.split(".")[-1]
     outfile = f"{outdir}/{vid}.{extension}"
@@ -25,6 +26,10 @@ def downloadThumbnail(vid: str, url: str):
         maxRequests.release()
 
 
+# endregion
+
+
+# region Main Execution
 def main():
     load_dotenv()
 
@@ -59,5 +64,10 @@ def main():
         thread.join()
 
 
+# endregion
+
+
+# region Entry Point
 if __name__ == "__main__":
     main()
+# endregion

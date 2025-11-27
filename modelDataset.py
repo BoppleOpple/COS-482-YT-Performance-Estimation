@@ -11,13 +11,14 @@ from torch.utils.data import Dataset
 import PIL.Image
 
 import dataResourceDownload
-from ansi import getANSI, resetANSI
+from printHelper import getANSI, resetANSI
 
 brokenThumbnailImage: PIL.ImageFile.ImageFile = PIL.Image.open(
     "res/brokenThumbnail.jpg"
 )
 
 
+# region Helpers
 def npToMpl(image: np.ndarray):
     return np.swapaxes(np.swapaxes(image, 1, 2), 0, 2)
 
@@ -31,11 +32,16 @@ def validThumbnail(imageDir: str, vid: str):
     return not brokenThumbnailImage == PIL.Image.open(imagePath)
 
 
+# endregion
+
+
+# region YTDataset
 class YTDataset(Dataset):
     images = dict()
     secondsDifference = np.vectorize(lambda duration: duration.total_seconds())
     imageSize = (640, 480)
 
+    # region __init__
     def __init__(self, imageDir="./output/thumbnails"):
         load_dotenv()
 
@@ -114,14 +120,23 @@ class YTDataset(Dataset):
 
         dbConnection.close()
 
+    # endregion
+
+    # region __len__
     def __len__(self):
         return len(self.data)
 
+    # endregion
+
+    # region __getitem__
     def __getitem__(self, idx):
         selectedImages = self.loadImages(self.thumbnailIDs[idx, 0])
 
         return torch.tensor(selectedImages), torch.tensor(self.data[idx, -3:])
 
+    # endregion
+
+    # region LoadImages
     def loadImages(self, vids):
         if type(vids) is str:
             return self.loadImage(vids)
@@ -140,6 +155,9 @@ class YTDataset(Dataset):
 
         return images
 
+    # endregion
+
+    # region LoadImage
     def loadImage(self, vid, output=None, i=0):
         imagePath = f"{self.imageDir}/{vid}.jpg"
         image = PIL.Image.open(imagePath)
@@ -149,3 +167,8 @@ class YTDataset(Dataset):
             output[i] = result
 
         return result
+
+    # endregion
+
+
+# endregion

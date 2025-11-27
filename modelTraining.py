@@ -13,8 +13,9 @@ import matplotlib.pyplot as plt
 
 from modelDataset import YTDataset
 from model import ThumbnailModel
-from ansi import getANSI, resetANSI
+from printHelper import getANSI, resetANSI
 
+# region arguments
 parser = argparse.ArgumentParser(
     prog="python3 modelTraining.py",
     description="Trains a neural network on YouTube data",
@@ -32,8 +33,10 @@ parser.add_argument("-b", "--batch-size", default=20, type=int)
 parser.add_argument(
     "-v", "--validation-only", action="store_true"
 )  # TODO: not yet implemented
+# endregion
 
 
+# region showGrid
 def showGrid(size, images, text=None, filename=None):
     figure, axs = plt.subplots(nrows=size[0], ncols=size[1])
     figure.tight_layout()
@@ -53,6 +56,10 @@ def showGrid(size, images, text=None, filename=None):
         plt.savefig(filename, dpi=500)
 
 
+# endregion
+
+
+# region trainOnce
 # epoch function based on the default provided by pytorch
 def trainOnce(
     model: torch.nn.Module,
@@ -97,6 +104,10 @@ def trainOnce(
     return running_loss / len(dataLoader)
 
 
+# endregion
+
+
+# region getNumParams
 def getNumParams(model):
     pp = 0
     for p in list(model.parameters()):
@@ -107,6 +118,10 @@ def getNumParams(model):
     return pp
 
 
+# endregion
+
+
+# region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
 
@@ -247,5 +262,10 @@ def main(argv=None):
     plt.show()
 
 
+# endregion
+
+
+# region Entry Point
 if __name__ == "__main__":
     main()
+# endregion
