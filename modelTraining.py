@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from modelDataset import YTDataset
 from model import ThumbnailModel
-from printHelper import getANSI, resetANSI
+from printHelpers import printANSI, printBox
 
 # region arguments
 parser = argparse.ArgumentParser(
@@ -127,8 +127,7 @@ def main(argv=None):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    ansi = getANSI("bold", "bright_magenta")
-    print(f"{ansi}running torch on {device}{resetANSI()}")
+    printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
     dataset = YTDataset(args.imageDir)
 
@@ -137,12 +136,7 @@ def main(argv=None):
 
     datasetLoadedStatement = f"dataset loaded with {len(dataset)} entries ({len(trainingSet)} training, {len(testingSet)} testing)"  # noqa: E501
 
-    print(getANSI("bold", "bright_magenta"))
-    print("+-" + "".join(["-" for c in datasetLoadedStatement]) + "-+")
-    print("| " + "".join([" " for c in datasetLoadedStatement]) + " |")
-    print("| " + datasetLoadedStatement + " |")
-    print("| " + "".join([" " for c in datasetLoadedStatement]) + " |")
-    print("+-" + "".join(["-" for c in datasetLoadedStatement]) + "-+", resetANSI())
+    printBox(datasetLoadedStatement, "bold", "bright_magenta")
 
     # print(dataset[1000])
     subset = dataset[:100]
@@ -201,8 +195,7 @@ def main(argv=None):
     # TODO THE REASON TESTING < TRAINING IS THAT ITS ONLY TAKEN AT THE BEST ITERATION
     # training loop, based on the one provided by pytorch
     for epoch in range(start, args.epochs):
-        ansi = getANSI("bold", "yellow")
-        print(f"{ansi}-=-=-=-=- EPOCH {epoch + 1} -=-=-=-=-{resetANSI()}")
+        printANSI(f"-=-=-=-=- EPOCH {epoch + 1} -=-=-=-=-", "bold", "yellow")
 
         print("training...")
         # Make sure gradient tracking is on, and do a pass over the data

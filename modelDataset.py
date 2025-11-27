@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 import PIL.Image
 
 import dataResourceDownload
-from printHelper import getANSI, resetANSI
+from printHelpers import printANSI
 
 brokenThumbnailImage: PIL.ImageFile.ImageFile = PIL.Image.open(
     "res/brokenThumbnail.jpg"
@@ -55,9 +55,8 @@ class YTDataset(Dataset):
             password=os.environ["SQL_PASSWORD"],
         )
 
-        ansi = getANSI("bold", "bright_blue")
         print()
-        print(f"{ansi}updating thumbnails...{resetANSI()}")
+        printANSI("updating thumbnails...", "bold", "bright_blue")
         dataResourceDownload.main()
 
         # Download data from the database
@@ -82,9 +81,8 @@ class YTDataset(Dataset):
             )
             result = cursor.fetchall()
 
-            ansi = getANSI("bold", "bright_blue")
             print()
-            print(f"{ansi}filtering data...{resetANSI()}")
+            printANSI("filtering data...", "bold", "bright_blue")
             rawData: np.ndarray = np.array(
                 list(
                     filter(

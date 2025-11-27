@@ -38,3 +38,25 @@ def resetANSI():
 
 
 # endregion
+
+
+# region printANSI
+def printANSI(string, *args):
+    print(f"{getANSI(*args)}{string}", resetANSI())
+
+
+# endregion
+
+
+# region printBox
+def printBox(string, *args):
+    print(getANSI(*args))
+    print("+-" + "".join(["-" for c in string]) + "-+")
+    print("| " + "".join([" " for c in string]) + " |")
+    print("| " + string + " |")
+    print("| " + "".join([" " for c in string]) + " |")
+    print("+-" + "".join(["-" for c in string]) + "-+")
+    print(resetANSI())
+
+
+# endregion
