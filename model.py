@@ -1,3 +1,4 @@
+import math
 import torch
 import torchvision
 
@@ -22,8 +23,8 @@ class ThumbnailModel(torch.nn.Module):
 
         self.flatten = torch.nn.Flatten()
 
-        print(f"latents: ({ w//16 }, { h//16 })")
-        self.fc1 = torch.nn.Linear(w // 32 * h // 32 * 160, 160)
+        print(f"latents: ({ math.ceil(w/32) }, { math.ceil(h/32) }, 160)")
+        self.fc1 = torch.nn.Linear(math.ceil(w / 32) * math.ceil(h / 32) * 160, 160)
         self.fc2 = torch.nn.Linear(160, 16)
         self.fc3 = torch.nn.Linear(16, 3)
 
@@ -57,6 +58,20 @@ class ThumbnailModel(torch.nn.Module):
         return layer8
 
     # endregion
+
+
+# endregion
+
+
+# region getNumParams
+def getNumParams(model):
+    pp = 0
+    for p in list(model.parameters()):
+        nn = 1
+        for s in list(p.size()):
+            nn = nn * s
+        pp += nn
+    return pp
 
 
 # endregion

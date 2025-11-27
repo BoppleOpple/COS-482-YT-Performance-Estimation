@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import torch
 from torch.utils.data import Dataset
 
+import matplotlib.pyplot as plt
 import PIL.Image
 
 import dataResourceDownload
@@ -20,11 +21,11 @@ brokenThumbnailImage: PIL.ImageFile.ImageFile = PIL.Image.open(
 
 # region Helpers
 def npToMpl(image: np.ndarray):
-    return np.swapaxes(np.swapaxes(image, 1, 2), 0, 2)
+    return np.swapaxes(np.swapaxes(image, -2, -1), -3, -1)
 
 
 def mplToNp(image: np.ndarray):
-    return np.swapaxes(np.swapaxes(image, 0, 2), 1, 2)
+    return np.swapaxes(np.swapaxes(image, -3, -1), -2, -1)
 
 
 def validThumbnail(imageDir: str, vid: str):
@@ -39,12 +40,12 @@ def validThumbnail(imageDir: str, vid: str):
 class YTDataset(Dataset):
     images = dict()
     secondsDifference = np.vectorize(lambda duration: duration.total_seconds())
-    imageSize = (640, 480)
 
     # region __init__
-    def __init__(self, imageDir="./output/thumbnails"):
+    def __init__(self, imageDir="./output/thumbnails", imageSize=(640, 360)):
         load_dotenv()
 
+        self.imageSize = imageSize
         self.imageDir = imageDir
 
         dbConnection: psycopg2.extensions.connection = psycopg2.connect(
@@ -167,6 +168,32 @@ class YTDataset(Dataset):
         return result
 
     # endregion
+
+
+# endregion
+
+
+# region showGrid
+def showGrid(size, images, text=None, filename=None):
+    figure, axs = plt.subplots(nrows=size[0], ncols=size[1])
+    figure.tight_layout(pad=0)
+    figure.set_size_inches(size[1] * 3, size[0] * 3)
+
+    if images.shape[-1] != 3:
+        images = npToMpl(images)
+
+    for i in range(len(axs)):
+        for j in range(len(axs[i])):
+            axs[i][j].imshow(images[i * len(axs[i]) + j])
+            axs[i][j].set_xticks([])
+            axs[i][j].set_yticks([])
+            if text:
+                axs[i][j].set_title(text[i * len(axs[i]) + j])
+
+    plt.show()
+
+    if filename:
+        plt.savefig(filename, dpi=500)
 
 
 # endregion

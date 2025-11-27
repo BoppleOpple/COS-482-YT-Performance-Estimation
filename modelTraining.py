@@ -5,14 +5,14 @@ import re
 import argparse
 
 import torch
-from torch.utils.data import DataLoader, random_split, default_collate
+from torch.utils.data import DataLoader, random_split
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
 import matplotlib.pyplot as plt
 
 from modelDataset import YTDataset
-from model import ThumbnailModel
+from model import ThumbnailModel, getNumParams
 from printHelpers import printANSI, printBox
 
 # region arguments
@@ -33,29 +33,6 @@ parser.add_argument("-b", "--batch-size", default=20, type=int)
 parser.add_argument(
     "-v", "--validation-only", action="store_true"
 )  # TODO: not yet implemented
-# endregion
-
-
-# region showGrid
-def showGrid(size, images, text=None, filename=None):
-    figure, axs = plt.subplots(nrows=size[0], ncols=size[1])
-    figure.tight_layout()
-    figure.set_size_inches(size[1] * 3, size[0] * 3)
-
-    for i in range(len(axs)):
-        for j in range(len(axs[i])):
-            axs[i][j].imshow(images[i * len(axs[i]) + j])
-            axs[i][j].set_xticks([])
-            axs[i][j].set_yticks([])
-            if text:
-                axs[i][j].set_title(text[i * len(axs[i]) + j])
-
-    plt.show()
-
-    if filename:
-        plt.savefig(filename, dpi=500)
-
-
 # endregion
 
 
@@ -107,43 +84,23 @@ def trainOnce(
 # endregion
 
 
-# region getNumParams
-def getNumParams(model):
-    pp = 0
-    for p in list(model.parameters()):
-        nn = 1
-        for s in list(p.size()):
-            nn = nn * s
-        pp += nn
-    return pp
-
-
-# endregion
-
-
 # region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    rng = torch.Generator().manual_seed(1)
 
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
     dataset = YTDataset(args.imageDir)
-
-    rng = torch.Generator().manual_seed(1)
     trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
 
-    datasetLoadedStatement = f"dataset loaded with {len(dataset)} entries ({len(trainingSet)} training, {len(testingSet)} testing)"  # noqa: E501
-
-    printBox(datasetLoadedStatement, "bold", "bright_magenta")
-
-    # print(dataset[1000])
-    subset = dataset[:100]
-    print(dataset[0][0].shape)
-    print(subset[0].shape)
-
-    # showGrid((4, 6), subset[:9][0])
+    printBox(
+        f"dataset loaded with {len(dataset)} entries ({len(trainingSet)} training, {len(testingSet)} testing)",  # noqa: E501
+        "bold",
+        "bright_magenta",
+    )
 
     trainingDataLoader = DataLoader(
         trainingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
@@ -152,16 +109,18 @@ def main(argv=None):
         testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
     )
 
-    model = ThumbnailModel(*dataset.imageSize).to(device)
-    print(getNumParams(model))
+    # TODO: add flag for displaying these things
+    # gridSize = (4, 6)
+    # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
+    # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
-    output = model.forward(
-        default_collate([testingSet[i][0].to(device) for i in range(2)])
+    model = ThumbnailModel(*dataset.imageSize).to(device)
+
+    printBox(
+        f"model loaded with {getNumParams(model)} parameters",
+        "bold",
+        "bright_magenta",
     )
-    print(output.size())
-    print(output)
-    # plt.imshow(npImage(output[0,:1].cpu()))
-    # print(output[0][0].cpu().detach().numpy())
 
     criterion = torch.nn.MSELoss()
     # criterion = torch.nn.L1Loss()
@@ -246,13 +205,14 @@ def main(argv=None):
             fileBody += f"{losses[i]},{v_losses[i]}\n"
         f.write(fileBody)
 
-    plt.figure()
+    fig = plt.figure()
 
     plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
     plt.plot(range(len(losses)), losses, label="training", color="#6496fa")
     plt.legend()
 
-    plt.show()
+    fig.show()
+    fig.savefig(f"{args.outDir}/losses.png")
 
 
 # endregion

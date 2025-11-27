@@ -25,8 +25,8 @@ ansiCodes = {
 
 # region getANSI
 def getANSI(*args):
-    ansiCodes = ";".join([ansiCodes[arg] for arg in args])
-    return f"\033[{ansiCodes}m"
+    ansi = ";".join([ansiCodes[arg] for arg in args])
+    return f"\033[{ansi}m"
 
 
 # endregion
