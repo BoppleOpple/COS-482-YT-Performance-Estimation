@@ -1,5 +1,5 @@
 import os
-from threading import Thread
+from threading import Thread, Semaphore
 from tqdm import tqdm
 from dotenv import load_dotenv
 import requests
@@ -7,6 +7,7 @@ import requests
 import psycopg2
 
 outdir = "./output/thumbnails"
+maxRequests = Semaphore(1024)
 
 
 def downloadThumbnail(vid: str, url: str):
@@ -14,12 +15,14 @@ def downloadThumbnail(vid: str, url: str):
     outfile = f"{outdir}/{vid}.{extension}"
 
     if not os.path.exists(outfile):
+        maxRequests.acquire()
         thumbnailRequest = requests.get(url)
 
         with open(outfile, "wb") as f:
             f.write(thumbnailRequest.content)
 
         thumbnailRequest.close()
+        maxRequests.release()
 
 
 def main():
