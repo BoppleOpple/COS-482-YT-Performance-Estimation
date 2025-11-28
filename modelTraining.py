@@ -1,18 +1,24 @@
 import os
 from tqdm import tqdm
-import datetime
-import re
 import argparse
+import pickle
+from functools import partial
+
+# import matplotlib.pyplot as plt
+import pathlib
 
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Dataset
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
-import matplotlib.pyplot as plt
+import ray.tune
+import ray.train
+from ray.train import Checkpoint, get_checkpoint
+from ray.tune.schedulers import ASHAScheduler
 
 from modelDataset import YTDataset
-from model import ThumbnailModel, getNumParams
+from model import ThumbnailModel, getNumParams, resetAllWeights
 from printHelpers import printANSI, printBox
 
 # region arguments
@@ -23,9 +29,13 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument_group("File I/O")
-parser.add_argument("-i", "--imageDir", default="./output/thumbnails")
-parser.add_argument("-o", "--outDir", default="./output")
-parser.add_argument("-s", "--starting-weights", default=None, type=str)
+parser.add_argument(
+    "-i", "--imageDir", default="./output/thumbnails", type=pathlib.Path
+)
+parser.add_argument("-o", "--outDir", default="./output", type=pathlib.Path)
+
+# TODO: change to checkpoint
+parser.add_argument("-s", "--starting-weights", default=None, type=pathlib.Path)
 
 parser.add_argument_group("Training options")
 parser.add_argument("-e", "--epochs", default=5, type=int)
@@ -84,20 +94,58 @@ def trainOnce(
 # endregion
 
 
+# region train
 def train(
+    hyperparams: dict,
     model: torch.nn.Module,
+    trainingDataset: Dataset,
     epochs: int,
-    trainingDataLoader: DataLoader,
-    testingDataLoader: DataLoader,
-    criterion: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.Any,
-    device: torch.device,
-    outDir: str = None,
-    starting_epoch: int = 0,
+    device: torch.device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu"
+    ),
+    outDir: pathlib.Path = None,
 ):
-    losses = []
-    test_losses = []
+    if ray.tune.get_context().get_experiment_name():
+        outDir /= ray.tune.get_context().get_experiment_name()
+
+    criterion = torch.nn.MSELoss()
+    # criterion = torch.nn.L1Loss()
+
+    # optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
+    optimizer = Adam(model.parameters(), lr=hyperparams["lr"])
+
+    scheduler = ExponentialLR(optimizer, gamma=hyperparams["gamma"])
+
+    os.makedirs(outDir / "states", exist_ok=True)
+
+    # taken from https://docs.pytorch.org/tutorials/beginner/hyperparameter_tuning_tutorial.html
+    checkpoint: Checkpoint = get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpointDir:
+            dataPath = f"{checkpointDir}/data.pkl"
+            with open(dataPath, "rb") as f:
+                checkpointState = pickle.load(f)
+            starting_epoch = checkpointState["epoch"]
+            model.load_state_dict(checkpointState["model_state_dict"])
+            optimizer.load_state_dict(checkpointState["optimizer_state_dict"])
+            losses = checkpointState["losses"]
+            valLosses = checkpointState["validation_losses"]
+    else:
+        resetAllWeights(model)
+        starting_epoch = 0
+        losses = []
+        valLosses = []
+
+    rng = torch.Generator().manual_seed(56328417)
+    trainSet, valSet = random_split(trainingDataset, (0.8, 0.2), rng)
+
+    trainingDataLoader = DataLoader(
+        trainSet, batch_size=hyperparams["batch_size"], shuffle=True, num_workers=0
+    )
+    valDataLoader = DataLoader(
+        valSet, batch_size=hyperparams["batch_size"], shuffle=True, num_workers=0
+    )
+
     # TODO THE REASON TESTING < TRAINING IS THAT ITS ONLY TAKEN AT THE BEST ITERATION
     # training loop, based on the one provided by pytorch
     # TODO split validation for
@@ -113,7 +161,7 @@ def train(
         )
         losses.append(avg_loss)
 
-        running_test_loss = 0.0
+        runningValLoss = 0.0
         # Set the model to evaluation mode, disabling dropout and using population
         # statistics for batch normalization.
         model.eval()
@@ -121,34 +169,51 @@ def train(
         print("validating...")
         # Disable gradient computation and reduce memory consumption.
         with torch.no_grad():
-            for test_inputs, test_labels in tqdm(iter(testingDataLoader)):
-                test_inputs = test_inputs.to(device)
-                test_labels = test_labels.to(device)
+            for valInputs, valLabels in tqdm(iter(valDataLoader)):
+                valInputs = valInputs.to(device)
+                valLabels = valLabels.to(device)
 
-                voutputs = model(test_inputs)
-                test_loss = criterion(voutputs, test_labels)
-                running_test_loss += test_loss
+                valOutputs = model(valInputs)
+                valLoss = criterion(valOutputs, valLabels)
+                runningValLoss += valLoss
 
-        avg_test_loss = running_test_loss / (len(testingDataLoader) + 1)
-        test_losses.append(avg_test_loss)
+        avgValLoss = runningValLoss / (len(valDataLoader) + 1)
+        valLosses.append(avgValLoss)
 
         # report losses
         print(f"Training loss (MSE): {avg_loss}")
-        print(f"Testing loss (MSE): {avg_test_loss}")
+        print(f"Validation loss (MSE): {avgValLoss}")
 
-        # finally, save the model params for future reference
-        if outDir:
-            torch.save(model.state_dict(), f"{outDir}/states/epoch_{epoch + 1}.pt")
+        # finally, save the model state
+        checkpointData = {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "losses": losses,
+            "validation_losses": valLosses,
+        }
+
+        checkpointDir = outDir / f"epoch_{epoch}" / "data.pkl"
+
+        with open(checkpointDir) as f:
+            pickle.dump(checkpointData, f)
+
+        checkpoint = Checkpoint.from_directory(checkpointDir)
+        ray.train.report({"loss": avgValLoss}, checkpoint=checkpoint)
 
     # retrieve losses from gpu
-    test_losses = [loss.cpu() for loss in test_losses]
+    valLosses = [loss.cpu() for loss in valLosses]
 
-    return losses, test_losses
+    return losses, valLosses
+
+
+# endregion
 
 
 # region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
+    # currentTime = datetime.datetime.now()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator().manual_seed(1)
@@ -164,12 +229,9 @@ def main(argv=None):
         "bright_magenta",
     )
 
-    trainingDataLoader = DataLoader(
-        trainingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
-    )
-    testingDataLoader = DataLoader(
-        testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
-    )
+    # testingDataLoader = DataLoader(
+    #     testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
+    # )
 
     # TODO: add flag for displaying these things
     # gridSize = (4, 6)
@@ -184,65 +246,51 @@ def main(argv=None):
         "bright_magenta",
     )
 
-    criterion = torch.nn.MSELoss()
-    # criterion = torch.nn.L1Loss()
-
-    # optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
-    optimizer = Adam(model.parameters(), lr=1e-4)
-
-    scheduler = ExponentialLR(optimizer, gamma=0.9)
-
-    os.makedirs(f"{args.outDir}/states", exist_ok=True)
-
-    # set to True to resume from a specified epoch
-    start = 0
-
-    if args.starting_weights:
-        # attempt to derive epoch number from filename
-        match = re.match(r".*epoch_(\d+)\.pt", args.starting_weights)
-
-        if re.match(r"", args.starting_weights):
-            start = match.group(1)
-
-        # load weights
-        model.load_state_dict(
-            torch.load(
-                f"{args.starting_weights}epoch_{start+1}.pt", map_location=device
-            )
-        )
-
-    losses, v_losses = train(
-        model,
-        args.epochs,
-        trainingDataLoader,
-        testingDataLoader,
-        criterion,
-        optimizer,
-        scheduler,
-        device,
-        outDir=args.outDir,
-        starting_epoch=start,
+    hyperparams = {
+        "lr": ray.tune.loguniform(1e-5, 1e-2),
+        "gamma": ray.tune.uniform(0.75, 1),
+        "batch_size": ray.tune.choice(range(8, 28, 4)),
+    }
+    scheduler = ASHAScheduler(
+        metric="loss", mode="min", max_t=args.epochs, grace_period=1, reduction_factor=2
+    )
+    result = ray.tune.run(
+        partial(
+            train, trainingDataset=trainingSet, epochs=args.epochs, outDir=args.outDir
+        ),
+        resources_per_trial={"cpu": 2, "gpu": 2},
+        config=hyperparams,
+        num_samples=10,
+        scheduler=scheduler,
     )
 
-    currentTime = datetime.datetime.now()
+    print(result)
 
-    with open(
-        f"{args.outDir}/losses_{currentTime.isoformat()}.csv",
-        "w",
-    ) as f:
-        fileBody = "loss,val loss\n"
-        for i in range(len(losses)):
-            fileBody += f"{losses[i]},{v_losses[i]}\n"
-        f.write(fileBody)
+    # losses, v_losses = train(
+    #     model,
+    #     args.epochs,
+    #     trainingSet,
+    #     hyperparams,
+    #     outDir=args.outDir,
+    # )
 
-    fig = plt.figure()
+    # with open(
+    #     f"{args.outDir}/losses_{currentTime.isoformat()}.csv",
+    #     "w",
+    # ) as f:
+    #     fileBody = "loss,val loss\n"
+    #     for i in range(len(losses)):
+    #         fileBody += f"{losses[i]},{v_losses[i]}\n"
+    #     f.write(fileBody)
 
-    plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
-    plt.plot(range(len(losses)), losses, label="training", color="#6496fa")
-    plt.legend()
+    # fig = plt.figure()
 
-    fig.show()
-    fig.savefig(f"{args.outDir}/losses.png")
+    # plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
+    # plt.plot(range(len(losses)), losses, label="training", color="#6496fa")
+    # plt.legend()
+
+    # fig.show()
+    # fig.savefig(f"{args.outDir}/losses.png")
 
 
 # endregion
