@@ -84,6 +84,68 @@ def trainOnce(
 # endregion
 
 
+def train(
+    model: torch.nn.Module,
+    epochs: int,
+    trainingDataLoader: DataLoader,
+    testingDataLoader: DataLoader,
+    criterion: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.Any,
+    device: torch.device,
+    outDir: str = None,
+    starting_epoch: int = 0,
+):
+    losses = []
+    test_losses = []
+    # TODO THE REASON TESTING < TRAINING IS THAT ITS ONLY TAKEN AT THE BEST ITERATION
+    # training loop, based on the one provided by pytorch
+    # TODO split validation for
+    for epoch in range(starting_epoch, epochs):
+        printANSI(f"-=-=-=-=- EPOCH {epoch + 1} -=-=-=-=-", "bold", "yellow")
+
+        print("training...")
+        # Make sure gradient tracking is on, and do a pass over the data
+        model.train(True)
+
+        avg_loss = trainOnce(
+            model, trainingDataLoader, criterion, optimizer, scheduler, device
+        )
+        losses.append(avg_loss)
+
+        running_test_loss = 0.0
+        # Set the model to evaluation mode, disabling dropout and using population
+        # statistics for batch normalization.
+        model.eval()
+
+        print("validating...")
+        # Disable gradient computation and reduce memory consumption.
+        with torch.no_grad():
+            for test_inputs, test_labels in tqdm(iter(testingDataLoader)):
+                test_inputs = test_inputs.to(device)
+                test_labels = test_labels.to(device)
+
+                voutputs = model(test_inputs)
+                test_loss = criterion(voutputs, test_labels)
+                running_test_loss += test_loss
+
+        avg_test_loss = running_test_loss / (len(testingDataLoader) + 1)
+        test_losses.append(avg_test_loss)
+
+        # report losses
+        print(f"Training loss (MSE): {avg_loss}")
+        print(f"Testing loss (MSE): {avg_test_loss}")
+
+        # finally, save the model params for future reference
+        if outDir:
+            torch.save(model.state_dict(), f"{outDir}/states/epoch_{epoch + 1}.pt")
+
+    # retrieve losses from gpu
+    test_losses = [loss.cpu() for loss in test_losses]
+
+    return losses, test_losses
+
+
 # region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
@@ -130,8 +192,6 @@ def main(argv=None):
 
     scheduler = ExponentialLR(optimizer, gamma=0.9)
 
-    losses, v_losses = [], []
-
     os.makedirs(f"{args.outDir}/states", exist_ok=True)
 
     # set to True to resume from a specified epoch
@@ -151,48 +211,18 @@ def main(argv=None):
             )
         )
 
-    # TODO THE REASON TESTING < TRAINING IS THAT ITS ONLY TAKEN AT THE BEST ITERATION
-    # training loop, based on the one provided by pytorch
-    for epoch in range(start, args.epochs):
-        printANSI(f"-=-=-=-=- EPOCH {epoch + 1} -=-=-=-=-", "bold", "yellow")
-
-        print("training...")
-        # Make sure gradient tracking is on, and do a pass over the data
-        model.train(True)
-
-        avg_loss = trainOnce(
-            model, trainingDataLoader, criterion, optimizer, scheduler, device
-        )
-        losses.append(avg_loss)
-
-        running_vloss = 0.0
-        # Set the model to evaluation mode, disabling dropout and using population
-        # statistics for batch normalization.
-        model.eval()
-
-        print("validating...")
-        # Disable gradient computation and reduce memory consumption.
-        with torch.no_grad():
-            for vinputs, vlabels in tqdm(iter(testingDataLoader)):
-                vinputs = vinputs.to(device)
-                vlabels = vlabels.to(device)
-
-                voutputs = model(vinputs)
-                vloss = criterion(voutputs, vlabels)
-                running_vloss += vloss
-
-        avg_vloss = running_vloss / (len(testingDataLoader) + 1)
-        v_losses.append(avg_vloss)
-
-        # report losses
-        print(f"Training loss (MSE): {avg_loss}")
-        print(f"Testing loss (MSE): {avg_vloss}")
-
-        # finally, save the model params for future reference
-        torch.save(model.state_dict(), f"{args.outDir}/states/epoch_{epoch + 1}.pt")
-
-    # retrieve losses from gpu and plot them
-    v_losses = [loss.cpu() for loss in v_losses]
+    losses, v_losses = train(
+        model,
+        args.epochs,
+        trainingDataLoader,
+        testingDataLoader,
+        criterion,
+        optimizer,
+        scheduler,
+        device,
+        outDir=args.outDir,
+        starting_epoch=start,
+    )
 
     currentTime = datetime.datetime.now()
 
