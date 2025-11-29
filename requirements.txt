@@ -7,5 +7,3 @@ torch
 torchvision
 matplotlib
 numpy
-ray
-ray[tune]
