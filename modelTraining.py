@@ -1,19 +1,20 @@
 import os
 from tqdm import tqdm
+from pathlib import Path
 import datetime
-import re
 import argparse
 
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
 import matplotlib.pyplot as plt
 
 from modelDataset import YTDataset
-from model import ThumbnailModel, getNumParams
-from printHelpers import printANSI, printBox
+from model import ThumbnailModel
+from printHelpers import printANSI
+from checkpoint import loadLatestCheckpoint
 
 # region arguments
 parser = argparse.ArgumentParser(
@@ -23,17 +24,16 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument_group("File I/O")
-parser.add_argument("-i", "--imageDir", default="./output/thumbnails")
-parser.add_argument("-o", "--outDir", default="./output")
+parser.add_argument("-i", "--imageDir", default="./output/thumbnails", type=Path)
+parser.add_argument("-o", "--outDir", default="./output", type=Path)
 parser.add_argument("-s", "--starting-weights", default=None, type=str)
 
 parser.add_argument_group("Training options")
 parser.add_argument("-e", "--epochs", default=5, type=int)
-parser.add_argument("-b", "--batch-size", default=20, type=int)
-parser.add_argument(
-    "-v", "--validation-only", action="store_true"
-)  # TODO: not yet implemented
+parser.add_argument("--validation_epochs", default=None, type=int)
 # endregion
+
+IMAGE_SIZE = (640, 360)
 
 
 # region trainOnce
@@ -84,25 +84,54 @@ def trainOnce(
 # endregion
 
 
+# region train
 def train(
-    model: torch.nn.Module,
+    config: dict,
     epochs: int,
-    trainingDataLoader: DataLoader,
-    testingDataLoader: DataLoader,
-    criterion: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.Any,
-    device: torch.device,
-    outDir: str = None,
-    starting_epoch: int = 0,
+    trainingSet: Dataset,
+    valSet: Dataset,
+    trialDir: Path,
+    device: torch.device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu"
+    ),
 ):
-    losses = []
-    test_losses = []
+    model = ThumbnailModel(*IMAGE_SIZE).to(device)
+
+    trainingDataLoader = DataLoader(
+        trainingSet, batch_size=config["batch_size"], shuffle=True, num_workers=0
+    )
+    valDataLoader = DataLoader(
+        valSet, batch_size=config["batch_size"], shuffle=True, num_workers=0
+    )
+
+    criterion = torch.nn.MSELoss()
+    # criterion = torch.nn.L1Loss()
+
+    # optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
+    optimizer = Adam(model.parameters(), lr=config["lr"])
+
+    scheduler = ExponentialLR(optimizer, gamma=config["gamma"])
+
+    checkpointDir: Path = trialDir / "checkpoints"
+    os.makedirs(checkpointDir, exist_ok=True)
+    checkpoint = loadLatestCheckpoint(checkpointDir)
+
+    if checkpoint:
+        model.load_state_dict(checkpoint["model_parameters"])
+        optimizer.load_state_dict(checkpoint["optimizer_parameters"])
+        scheduler.load_state_dict(checkpoint["scheduler_parameters"])
+        losses = checkpoint["losses"]
+        val_losses = checkpoint["val_losses"]
+        starting_epoch = checkpoint["epoch"]
+    else:
+        losses = []
+        val_losses = []
+        starting_epoch = 1
+
     # TODO THE REASON TESTING < TRAINING IS THAT ITS ONLY TAKEN AT THE BEST ITERATION
     # training loop, based on the one provided by pytorch
-    # TODO split validation for
-    for epoch in range(starting_epoch, epochs):
-        printANSI(f"-=-=-=-=- EPOCH {epoch + 1} -=-=-=-=-", "bold", "yellow")
+    for epoch in range(starting_epoch, epochs + 1):
+        printANSI(f"-=-=-=-=- EPOCH {epoch} -=-=-=-=-", "bold", "yellow")
 
         print("training...")
         # Make sure gradient tracking is on, and do a pass over the data
@@ -113,7 +142,7 @@ def train(
         )
         losses.append(avg_loss)
 
-        running_test_loss = 0.0
+        running_val_loss = 0.0
         # Set the model to evaluation mode, disabling dropout and using population
         # statistics for batch normalization.
         model.eval()
@@ -121,119 +150,82 @@ def train(
         print("validating...")
         # Disable gradient computation and reduce memory consumption.
         with torch.no_grad():
-            for test_inputs, test_labels in tqdm(iter(testingDataLoader)):
-                test_inputs = test_inputs.to(device)
-                test_labels = test_labels.to(device)
+            for val_inputs, val_labels in tqdm(iter(valDataLoader)):
+                val_inputs = val_inputs.to(device)
+                val_labels = val_labels.to(device)
 
-                voutputs = model(test_inputs)
-                test_loss = criterion(voutputs, test_labels)
-                running_test_loss += test_loss
+                val_outputs = model(val_inputs)
+                val_loss = criterion(val_outputs, val_labels)
+                running_val_loss += val_loss
 
-        avg_test_loss = running_test_loss / (len(testingDataLoader) + 1)
-        test_losses.append(avg_test_loss)
+        avg_val_loss = running_val_loss / (len(valDataLoader) + 1)
+        val_losses.append(avg_val_loss)
 
         # report losses
         print(f"Training loss (MSE): {avg_loss}")
-        print(f"Testing loss (MSE): {avg_test_loss}")
+        print(f"Testing loss (MSE): {avg_val_loss}")
 
         # finally, save the model params for future reference
-        if outDir:
-            torch.save(model.state_dict(), f"{outDir}/states/epoch_{epoch + 1}.pt")
+        checkpoint = {
+            "model_parameters": model.state_dict(),
+            "optimizer_parameters": optimizer.state_dict(),
+            "scheduler_parameters": scheduler.state_dict(),
+            "losses": losses,
+            "val_losses": val_losses,
+            "epoch": epoch,
+        }
 
     # retrieve losses from gpu
-    test_losses = [loss.cpu() for loss in test_losses]
+    val_losses = [loss.cpu() for loss in val_losses]
 
-    return losses, test_losses
+    with open(
+        trialDir / "losses.csv",
+        "w",
+    ) as f:
+        fileBody = "loss,val loss\n"
+        for i in range(len(losses)):
+            fileBody += f"{losses[i]},{val_losses[i]}\n"
+        f.write(fileBody)
+
+    return losses, val_losses
+
+
+# endregion
 
 
 # region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
+    currentTime = datetime.datetime.now()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator().manual_seed(1)
 
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
-    dataset = YTDataset(args.imageDir)
-    trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
-
-    printBox(
-        f"dataset loaded with {len(dataset)} entries ({len(trainingSet)} training, {len(testingSet)} testing)",  # noqa: E501
-        "bold",
-        "bright_magenta",
+    dataset = YTDataset(args.imageDir, IMAGE_SIZE)
+    trainingSet, valSet, testingSet = random_split(
+        dataset, (0.75, 0.10, 0.15), generator=rng
     )
 
-    trainingDataLoader = DataLoader(
-        trainingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
-    )
-    testingDataLoader = DataLoader(
-        testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
-    )
+    # testingDataLoader = DataLoader(
+    #     testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
+    # )
 
     # TODO: add flag for displaying these things
     # gridSize = (4, 6)
     # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
     # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
-    model = ThumbnailModel(*dataset.imageSize).to(device)
-
-    printBox(
-        f"model loaded with {getNumParams(model)} parameters",
-        "bold",
-        "bright_magenta",
-    )
-
-    criterion = torch.nn.MSELoss()
-    # criterion = torch.nn.L1Loss()
-
-    # optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
-    optimizer = Adam(model.parameters(), lr=1e-4)
-
-    scheduler = ExponentialLR(optimizer, gamma=0.9)
-
-    os.makedirs(f"{args.outDir}/states", exist_ok=True)
-
-    # set to True to resume from a specified epoch
-    start = 0
-
-    if args.starting_weights:
-        # attempt to derive epoch number from filename
-        match = re.match(r".*epoch_(\d+)\.pt", args.starting_weights)
-
-        if re.match(r"", args.starting_weights):
-            start = match.group(1)
-
-        # load weights
-        model.load_state_dict(
-            torch.load(
-                f"{args.starting_weights}epoch_{start+1}.pt", map_location=device
-            )
-        )
+    hyperparams = {"batch_size": 16, "lr": 1e-4, "gamma": 0.9}
 
     losses, v_losses = train(
-        model,
+        hyperparams,
         args.epochs,
-        trainingDataLoader,
-        testingDataLoader,
-        criterion,
-        optimizer,
-        scheduler,
-        device,
-        outDir=args.outDir,
-        starting_epoch=start,
+        trainingSet,
+        valSet,
+        args.outDir / f"session_{currentTime.isoformat()}",
     )
-
-    currentTime = datetime.datetime.now()
-
-    with open(
-        f"{args.outDir}/losses_{currentTime.isoformat()}.csv",
-        "w",
-    ) as f:
-        fileBody = "loss,val loss\n"
-        for i in range(len(losses)):
-            fileBody += f"{losses[i]},{v_losses[i]}\n"
-        f.write(fileBody)
 
     fig = plt.figure()
 

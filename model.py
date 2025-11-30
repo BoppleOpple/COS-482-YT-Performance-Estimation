@@ -2,6 +2,8 @@ import math
 import torch
 import torchvision
 
+from printHelpers import printBox
+
 
 # region ThumbnailModel
 class ThumbnailModel(torch.nn.Module):
@@ -29,6 +31,12 @@ class ThumbnailModel(torch.nn.Module):
         self.fc3 = torch.nn.Linear(16, 3)
 
         self.float()
+
+        printBox(
+            f"model loaded with {getNumParams(self)} parameters",
+            "bold",
+            "bright_magenta",
+        )
 
     # endregion
 
