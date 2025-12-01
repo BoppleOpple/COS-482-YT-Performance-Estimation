@@ -4,6 +4,7 @@ import pickle
 from pathlib import Path
 
 
+# region getLatestEpoch
 def getLatestEpoch(checkpointDir: Path) -> int:
     dirContents = "\n".join(os.listdir(checkpointDir))
 
@@ -20,11 +21,19 @@ def getLatestEpoch(checkpointDir: Path) -> int:
     return greatestEpoch
 
 
+# endregion
+
+
+# region loadCheckpoint
 def loadCheckpoint(checkpointFile: Path):
     with open(checkpointFile, "rb") as f:
         return pickle.load(f)
 
 
+# endregion
+
+
+# region loadLatestCheckpoint
 def loadLatestCheckpoint(checkpointDir: Path):
     epoch: int = getLatestEpoch(checkpointDir)
 
@@ -34,12 +43,23 @@ def loadLatestCheckpoint(checkpointDir: Path):
     return loadCheckpoint(checkpointDir / f"checkpoint_epoch_{epoch}.pkl")
 
 
+# endregion
+
+
+# region saveCheckpoint
 def saveCheckpoint(checkpointFile: Path, data: dict):
     with open(checkpointFile, "rb") as f:
         return pickle.dump(data, f)
 
 
+# endregion
+
+
+# region saveLatestCheckpoint
 def saveLatestCheckpoint(checkpointDir: Path, data: dict, epoch: int = None):
     epoch: int = epoch or getLatestEpoch(checkpointDir) or 1
 
     saveCheckpoint(checkpointDir / f"checkpoint_epoch_{epoch}.pkl", data)
+
+
+# endregion

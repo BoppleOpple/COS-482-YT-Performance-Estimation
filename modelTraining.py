@@ -16,6 +16,8 @@ from model import ThumbnailModel
 from printHelpers import printANSI
 from checkpoint import loadLatestCheckpoint
 
+IMAGE_SIZE = (640, 360)
+
 # region arguments
 parser = argparse.ArgumentParser(
     prog="python3 modelTraining.py",
@@ -26,14 +28,11 @@ parser = argparse.ArgumentParser(
 parser.add_argument_group("File I/O")
 parser.add_argument("-i", "--imageDir", default="./output/thumbnails", type=Path)
 parser.add_argument("-o", "--outDir", default="./output", type=Path)
-parser.add_argument("-s", "--starting-weights", default=None, type=str)
 
 parser.add_argument_group("Training options")
 parser.add_argument("-e", "--epochs", default=5, type=int)
 parser.add_argument("--validation_epochs", default=None, type=int)
 # endregion
-
-IMAGE_SIZE = (640, 360)
 
 
 # region trainOnce
@@ -98,19 +97,19 @@ def train(
     model = ThumbnailModel(*IMAGE_SIZE).to(device)
 
     trainingDataLoader = DataLoader(
-        trainingSet, batch_size=config["batch_size"], shuffle=True, num_workers=0
+        trainingSet, batch_size=int(config["batch_size"]), shuffle=True, num_workers=0
     )
     valDataLoader = DataLoader(
-        valSet, batch_size=config["batch_size"], shuffle=True, num_workers=0
+        valSet, batch_size=int(config["batch_size"]), shuffle=True, num_workers=0
     )
 
     criterion = torch.nn.MSELoss()
     # criterion = torch.nn.L1Loss()
 
     # optimizer = SGD(model.parameters(), lr=5e-6, momentum=0.9)
-    optimizer = Adam(model.parameters(), lr=config["lr"])
+    optimizer = Adam(model.parameters(), lr=float(config["lr"]))
 
-    scheduler = ExponentialLR(optimizer, gamma=config["gamma"])
+    scheduler = ExponentialLR(optimizer, gamma=float(config["gamma"]))
 
     checkpointDir: Path = trialDir / "checkpoints"
     os.makedirs(checkpointDir, exist_ok=True)
@@ -204,9 +203,7 @@ def main(argv=None):
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
     dataset = YTDataset(args.imageDir, IMAGE_SIZE)
-    trainingSet, valSet, testingSet = random_split(
-        dataset, (0.75, 0.10, 0.15), generator=rng
-    )
+    trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
 
     # testingDataLoader = DataLoader(
     #     testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
@@ -223,7 +220,7 @@ def main(argv=None):
         hyperparams,
         args.epochs,
         trainingSet,
-        valSet,
+        testingSet,
         args.outDir / f"session_{currentTime.isoformat()}",
     )
 

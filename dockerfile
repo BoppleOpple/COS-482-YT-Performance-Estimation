@@ -1,7 +1,8 @@
 FROM rocm/pytorch:latest AS container
 COPY . /yt_model
 WORKDIR yt_model
+
+VOLUME /mnt/output
+
 RUN ["pip", "install", "-r", "requirements-dev.txt"]
-# RUN python3 modelTraining.py
-# COPY output .
-ENTRYPOINT ["python3", "modelTraining.py", "-o", "trainingOutput"]
+ENTRYPOINT ["python3", "run.py", "-o", "/mnt/output"]

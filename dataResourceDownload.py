@@ -7,7 +7,7 @@ import requests
 import psycopg2
 
 outdir = "./output/thumbnails"
-maxRequests = Semaphore(1024)
+maxRequests = Semaphore(512)
 
 
 # region downloadThumbnail

@@ -1,6 +1,5 @@
 import os
 import json
-import datetime
 import numpy as np
 from scipy.stats import norm
 from pathlib import Path
@@ -34,15 +33,15 @@ class TuneParam:
 
 # region LinearRange
 class LinearRange(TuneParam):
-    def __init__(self, min_range: float, max_range: float):
-        self.min = min_range
-        self.max = max_range
+    def __init__(self, val1: float, val2: float):
+        self.min = min(val1, val2)
+        self.max = max(val1, val2)
 
     def select(self, n: int = 5) -> np.ndarray:
         if n <= 0:
             return np.array()
         elif n == 1:
-            return np.array([(self.max - self.min) / 2])
+            return np.array([(self.max + self.min) / 2])
 
         step = (self.max - self.min) / (n - 1)
         return np.arange(self.min, self.max + step / 2, step)
@@ -53,9 +52,9 @@ class LinearRange(TuneParam):
 
 # region NormalRange
 class NormalRange(TuneParam):
-    def __init__(self, min_range: float, max_range: float, p_value: float = 0.95):
-        self.min = min_range
-        self.max = max_range
+    def __init__(self, val1: float, val2: float, p_value: float = 0.95):
+        self.min = min(val1, val2)
+        self.max = max(val1, val2)
 
         mean = (self.min + self.max) / 2
 
@@ -97,22 +96,48 @@ class ConstantRange(TuneParam):
 # endregion
 
 
+# region Selection
+class Selection(TuneParam):
+    def __init__(self, iterable):
+        self.values = np.array(iterable)
+
+    def select(self, n: int = 5) -> np.ndarray:
+        return self.values
+
+
+# endregion
+
+
+# region NpEncoder
+# https://stackoverflow.com/questions/50916422/python-typeerror-object-of-type-int64-is-not-json-serializable
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
+
+# endregion
+
+
 # region tune
 def tune(
     hyperparams: dict[str, TuneParam],
     trainingSet: Dataset,
     validationSet: Dataset,
-    outDir: Path,
+    sessionDir: Path,
     epochs: int = 5,
     parameterSamples: int = 5,
     method: str = "cascade",
 ):
-    currentTime = datetime.datetime.now()
-
     bestParams = dict()
     if method == "cascade":
         for param, value in hyperparams.items():
-            bestParams[param] = value.select(1)
+            bestParams[param] = value.select(1)[0]
 
         trialID = 1
         for param in hyperparams:
@@ -121,21 +146,23 @@ def tune(
             paramLosses: np.ndarray = np.full((len(paramOptions), 2, epochs), np.inf)
             for i, value in enumerate(paramOptions):
                 printANSI(f"beginning trial {trialID}", "bold", "bright_blue")
-                trialDir = outDir / f"trial_{currentTime.isoformat()}"
+                trialDir = sessionDir / f"trial_{trialID}"
 
                 trialParams = bestParams.copy()
                 trialParams[param] = value
 
+                print(trialParams)
+
                 os.makedirs(trialDir, exist_ok=True)
                 with open(trialDir / "params.json", "w") as jsonFile:
-                    json.dump(trialParams, jsonFile)
+                    json.dump(trialParams, jsonFile, cls=NpEncoder)
 
                 testLosses, valLosses = train(
                     trialParams,
                     epochs,
                     trainingSet,
                     validationSet,
-                    outDir / f"trial_{currentTime.isoformat()}",
+                    trialDir,
                 )
 
                 paramLosses[i, 0] = testLosses
@@ -158,14 +185,14 @@ def tune(
 
 # region Entry Point
 if __name__ == "__main__":
-    lRange = LinearRange(0, 5)
-    nRange = NormalRange(-1, 1)
+    lRange = LinearRange(0.75, 1)
+    nRange = NormalRange(3, 4)
 
     lSelection = lRange.select(5)
-    print(f"linear range (0, 5) with 5 elements: {lSelection}")
+    print(f"linear range (0.75, 1) with 5 elements: {lSelection}")
 
     nSelection = nRange.select(5)
-    print(f"normal range (-1, 1) with 5 elements: {nSelection}")
+    print(f"normal range (3, 4) with 5 elements: {nSelection}")
 
     # hyperparams = {
     #     "param1": lRange,
