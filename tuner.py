@@ -1,5 +1,6 @@
 import os
 import json
+import pickle
 import numpy as np
 from scipy.stats import norm
 from pathlib import Path
@@ -8,6 +9,7 @@ from torch.utils.data import Dataset
 
 from modelTraining import train
 from printHelpers import printANSI, printBox
+from checkpoint import getLatestEpoch, loadLatestCheckpoint
 
 
 # region normalQuantile
@@ -85,7 +87,7 @@ class NormalRange(TuneParam):
 
 
 # region ConstantRange
-class ConstantRange(TuneParam):
+class Constant(TuneParam):
     def __init__(self, value):
         self.value = value
 
@@ -124,6 +126,22 @@ class NpEncoder(json.JSONEncoder):
 # endregion
 
 
+# region NpDecoder
+# https://stackoverflow.com/questions/50916422/python-typeerror-object-of-type-int64-is-not-json-serializable
+class NpDecoder(json.JSONDecoder):
+    def default(self, obj):
+        if isinstance(obj, int):
+            return np.integer(obj)
+        if isinstance(obj, float):
+            return np.floating(obj)
+        if isinstance(obj, list):
+            return np.array(obj)
+        return super(NpDecoder, self).default(obj)
+
+
+# endregion
+
+
 # region tune
 def tune(
     hyperparams: dict[str, TuneParam],
@@ -134,6 +152,11 @@ def tune(
     parameterSamples: int = 5,
     method: str = "cascade",
 ):
+    os.makedirs(sessionDir, exist_ok=True)
+
+    with open(sessionDir / "tuningParams.pkl", "wb") as f:
+        pickle.dump(hyperparams, f)
+
     bestParams = dict()
     if method == "cascade":
         for param, value in hyperparams.items():
@@ -145,27 +168,42 @@ def tune(
             paramOptions = hyperparams[param].select(parameterSamples)
             paramLosses: np.ndarray = np.full((len(paramOptions), 2, epochs), np.inf)
             for i, value in enumerate(paramOptions):
-                printANSI(f"beginning trial {trialID}", "bold", "bright_blue")
                 trialDir = sessionDir / f"trial_{trialID}"
+                checkpointDir = trialDir / "checkpoints"
 
-                trialParams = bestParams.copy()
-                trialParams[param] = value
+                os.makedirs(checkpointDir, exist_ok=True)
+                epochsCompleted = getLatestEpoch(checkpointDir)
 
-                print(trialParams)
+                if epochsCompleted and epochsCompleted >= epochs:
+                    printANSI(f"skipping trial {trialID}", "bold", "red")
 
-                os.makedirs(trialDir, exist_ok=True)
-                with open(trialDir / "params.json", "w") as jsonFile:
-                    json.dump(trialParams, jsonFile, cls=NpEncoder)
+                    checkpoint = loadLatestCheckpoint(checkpointDir)
+                    trainLosses = checkpoint["losses"]
+                    valLosses = checkpoint["val_losses"]
+                else:
+                    printANSI(f"beginning trial {trialID}", "bold", "bright_blue")
 
-                testLosses, valLosses = train(
-                    trialParams,
-                    epochs,
-                    trainingSet,
-                    validationSet,
-                    trialDir,
-                )
+                    if (trialDir / "params.json").exists():
+                        with open(trialDir / "params.json", "r") as jsonFile:
+                            trialParams = json.load(jsonFile, cls=NpDecoder)
 
-                paramLosses[i, 0] = testLosses
+                    trialParams = bestParams.copy()
+                    trialParams[param] = value
+
+                    print(trialParams)
+
+                    with open(trialDir / "params.json", "w") as jsonFile:
+                        json.dump(trialParams, jsonFile, cls=NpEncoder)
+
+                    trainLosses, valLosses = train(
+                        trialParams,
+                        epochs,
+                        trainingSet,
+                        validationSet,
+                        trialDir,
+                    )
+
+                paramLosses[i, 0] = trainLosses
                 paramLosses[i, 1] = valLosses
                 trialID += 1
 
@@ -177,6 +215,9 @@ def tune(
             )
 
             bestParams[param] = bestValue
+
+        with open(sessionDir / "best_params.json", "w") as jsonFile:
+            json.dump(bestParams, jsonFile, cls=NpEncoder)
 
         return bestParams
 

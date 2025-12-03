@@ -8,7 +8,7 @@ from pathlib import Path
 def getLatestEpoch(checkpointDir: Path) -> int:
     dirContents = "\n".join(os.listdir(checkpointDir))
 
-    results: list[re.Match] = re.findall(r"^checkpoint_epoch_{\d+}\.pkl$", dirContents)
+    results: list[str] = re.findall(r"checkpoint_epoch_(\d+)\.pkl", dirContents)
 
     if not results:
         return None
@@ -16,7 +16,7 @@ def getLatestEpoch(checkpointDir: Path) -> int:
     greatestEpoch = -1
 
     for match in results:
-        greatestEpoch = max(greatestEpoch, int(match.group(1)))
+        greatestEpoch = max(greatestEpoch, int(match))
 
     return greatestEpoch
 
@@ -48,8 +48,8 @@ def loadLatestCheckpoint(checkpointDir: Path):
 
 # region saveCheckpoint
 def saveCheckpoint(checkpointFile: Path, data: dict):
-    with open(checkpointFile, "rb") as f:
-        return pickle.dump(data, f)
+    with open(checkpointFile, "wb") as f:
+        pickle.dump(data, f)
 
 
 # endregion
@@ -57,7 +57,7 @@ def saveCheckpoint(checkpointFile: Path, data: dict):
 
 # region saveLatestCheckpoint
 def saveLatestCheckpoint(checkpointDir: Path, data: dict, epoch: int = None):
-    epoch: int = epoch or getLatestEpoch(checkpointDir) or 1
+    epoch: int = epoch or getLatestEpoch(checkpointDir) + 1 or 1
 
     saveCheckpoint(checkpointDir / f"checkpoint_epoch_{epoch}.pkl", data)
 

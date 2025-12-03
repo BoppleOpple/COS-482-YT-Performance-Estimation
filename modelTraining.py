@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from modelDataset import YTDataset
 from model import ThumbnailModel
 from printHelpers import printANSI
-from checkpoint import loadLatestCheckpoint
+from checkpoint import loadLatestCheckpoint, saveLatestCheckpoint
 
 IMAGE_SIZE = (640, 360)
 
@@ -116,12 +116,13 @@ def train(
     checkpoint = loadLatestCheckpoint(checkpointDir)
 
     if checkpoint:
+        printANSI(f"loading checkpoint from {checkpointDir}...", "bold", "cyan")
         model.load_state_dict(checkpoint["model_parameters"])
         optimizer.load_state_dict(checkpoint["optimizer_parameters"])
         scheduler.load_state_dict(checkpoint["scheduler_parameters"])
         losses = checkpoint["losses"]
         val_losses = checkpoint["val_losses"]
-        starting_epoch = checkpoint["epoch"]
+        starting_epoch = checkpoint["epoch"] + 1
     else:
         losses = []
         val_losses = []
@@ -170,9 +171,10 @@ def train(
             "optimizer_parameters": optimizer.state_dict(),
             "scheduler_parameters": scheduler.state_dict(),
             "losses": losses,
-            "val_losses": val_losses,
+            "val_losses": [loss.cpu() for loss in val_losses],
             "epoch": epoch,
         }
+        saveLatestCheckpoint(checkpointDir, checkpoint, epoch)
 
     # retrieve losses from gpu
     val_losses = [loss.cpu() for loss in val_losses]

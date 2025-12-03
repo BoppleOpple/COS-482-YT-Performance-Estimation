@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+import pickle
 import datetime
 
 import torch
@@ -53,19 +54,31 @@ def main(argv=None):
     # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
     # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
-    hyperparams = {
-        "lr": NormalRange(1e-5, 1e-2),
-        "gamma": LinearRange(0.75, 1),
-        "batch_size": Selection([int(i) for i in range(4, 24, 4)]),
-    }
+    sessionName = args.sessionName or f"session_{currentTime.isoformat()}"
 
-    session_name = args.sessionName or f"session_{currentTime.isoformat()}"
+    sessionPath: Path = args.outDir / sessionName
+    hyperparameterPath: Path = sessionPath / "tuningParams.pkl"
+
+    if hyperparameterPath.exists():
+        printANSI(
+            "Loading hyperparameters from session dir (you have been warned)",
+            "bold",
+            "cyan",
+        )
+        with open(hyperparameterPath, "rb") as f:
+            hyperparams = pickle.load(f)
+    else:
+        hyperparams = {
+            "lr": NormalRange(5e-6, 1e-5),
+            "gamma": LinearRange(0.5, 0.75),
+            "batch_size": Selection([int(i) for i in reversed(range(2, 8, 2))]),
+        }
 
     tune(
         hyperparams,
         trainingSet,
         valSet,
-        args.outDir / session_name,
+        sessionPath,
         epochs=args.epochs,
         parameterSamples=5,
     )
