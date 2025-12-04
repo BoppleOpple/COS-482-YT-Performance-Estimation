@@ -5,7 +5,7 @@ import datetime
 import argparse
 
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, default_collate
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
@@ -49,7 +49,7 @@ def trainOnce(
 
     batch = 1
 
-    for inputs, groundTruth in tqdm(iter(dataLoader)):
+    for inputs, _, _, groundTruth in tqdm(iter(dataLoader)):
         inputs = inputs.to(device)
         groundTruth = groundTruth.to(device)
 
@@ -87,9 +87,10 @@ def trainOnce(
 def train(
     config: dict,
     epochs: int,
-    trainingSet: Dataset,
-    valSet: Dataset,
+    trainingSet: YTDataset,
+    valSet: YTDataset,
     trialDir: Path,
+    collate_fn=default_collate,
     device: torch.device = torch.device(
         "cuda:0" if torch.cuda.is_available() else "cpu"
     ),
@@ -97,10 +98,18 @@ def train(
     model = ThumbnailModel(*IMAGE_SIZE).to(device)
 
     trainingDataLoader = DataLoader(
-        trainingSet, batch_size=int(config["batch_size"]), shuffle=True, num_workers=0
+        trainingSet,
+        batch_size=int(config["batch_size"]),
+        shuffle=True,
+        num_workers=0,
+        collate_fn=collate_fn,
     )
     valDataLoader = DataLoader(
-        valSet, batch_size=int(config["batch_size"]), shuffle=True, num_workers=0
+        valSet,
+        batch_size=int(config["batch_size"]),
+        shuffle=True,
+        num_workers=0,
+        collate_fn=collate_fn,
     )
 
     criterion = torch.nn.MSELoss()
@@ -150,7 +159,7 @@ def train(
         print("validating...")
         # Disable gradient computation and reduce memory consumption.
         with torch.no_grad():
-            for val_inputs, val_labels in tqdm(iter(valDataLoader)):
+            for val_inputs, _, _, val_labels in tqdm(iter(valDataLoader)):
                 val_inputs = val_inputs.to(device)
                 val_labels = val_labels.to(device)
 
@@ -216,14 +225,15 @@ def main(argv=None):
     # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
     # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
-    hyperparams = {"batch_size": 16, "lr": 1e-4, "gamma": 0.9}
+    hyperparams = {"batch_size": 6, "lr": 1e-06, "gamma": 0.8}
 
     losses, v_losses = train(
         hyperparams,
         args.epochs,
         trainingSet,
         testingSet,
-        args.outDir / f"session_{currentTime.isoformat()}",
+        args.outDir / f"train_{currentTime.isoformat()}",
+        collate_fn=dataset.collate_fn,
     )
 
     fig = plt.figure()
@@ -233,7 +243,7 @@ def main(argv=None):
     plt.legend()
 
     fig.show()
-    fig.savefig(f"{args.outDir}/losses.png")
+    fig.savefig(args.outDir / "losses.png")
 
 
 # endregion

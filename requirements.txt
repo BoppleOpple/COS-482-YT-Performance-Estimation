@@ -9,3 +9,4 @@ torchtext
 matplotlib
 numpy
 scipy
+spacy
