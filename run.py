@@ -28,6 +28,7 @@ parser.add_argument("--validation_epochs", default=None, type=int)
 # endregion
 
 IMAGE_SIZE = (640, 360)
+VOCAB_SIZE = 10000
 
 
 # region Main Execution
@@ -40,7 +41,7 @@ def main(argv=None):
 
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
-    dataset = YTDataset(args.imageDir, IMAGE_SIZE)
+    dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabSize=VOCAB_SIZE)
     trainingSet, valSet, testingSet = random_split(
         dataset, (0.75, 0.10, 0.15), generator=rng
     )

@@ -5,18 +5,19 @@ import datetime
 import argparse
 
 import torch
-from torch.utils.data import DataLoader, random_split, default_collate
+from torch.utils.data import Dataset, DataLoader, random_split, default_collate
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
 import matplotlib.pyplot as plt
 
 from modelDataset import YTDataset
-from model import ThumbnailModel
+from model import YTModel
 from printHelpers import printANSI
 from checkpoint import loadLatestCheckpoint, saveLatestCheckpoint
 
 IMAGE_SIZE = (640, 360)
+VOCAB_SIZE = 10000
 
 # region arguments
 parser = argparse.ArgumentParser(
@@ -49,7 +50,9 @@ def trainOnce(
 
     batch = 1
 
-    for inputs, _, _, groundTruth in tqdm(iter(dataLoader)):
+    for thumbnails, encodedTitles, inputs, groundTruth in tqdm(iter(dataLoader)):
+        thumbnails = thumbnails.to(device)
+        encodedTitles = encodedTitles.to(device)
         inputs = inputs.to(device)
         groundTruth = groundTruth.to(device)
 
@@ -57,10 +60,7 @@ def trainOnce(
         optimizer.zero_grad()
 
         # Make predictions for this batch
-        output = model(inputs)
-
-        # print(output)
-        # print(groundTruth)
+        output = model(thumbnails, encodedTitles, inputs)
 
         # Compute the loss and its gradients
         loss = criterion(output, groundTruth)
@@ -87,15 +87,15 @@ def trainOnce(
 def train(
     config: dict,
     epochs: int,
-    trainingSet: YTDataset,
-    valSet: YTDataset,
+    trainingSet: Dataset,
+    valSet: Dataset,
     trialDir: Path,
     collate_fn=default_collate,
     device: torch.device = torch.device(
         "cuda:0" if torch.cuda.is_available() else "cpu"
     ),
 ):
-    model = ThumbnailModel(*IMAGE_SIZE).to(device)
+    model = YTModel(*IMAGE_SIZE, VOCAB_SIZE, 128).to(device)
 
     trainingDataLoader = DataLoader(
         trainingSet,
@@ -159,11 +159,15 @@ def train(
         print("validating...")
         # Disable gradient computation and reduce memory consumption.
         with torch.no_grad():
-            for val_inputs, _, _, val_labels in tqdm(iter(valDataLoader)):
+            for val_thumbnails, val_titles, val_inputs, val_labels in tqdm(
+                iter(valDataLoader)
+            ):
+                val_thumbnails = val_thumbnails.to(device)
+                val_titles = val_titles.to(device)
                 val_inputs = val_inputs.to(device)
                 val_labels = val_labels.to(device)
 
-                val_outputs = model(val_inputs)
+                val_outputs = model(val_thumbnails, val_titles, val_inputs)
                 val_loss = criterion(val_outputs, val_labels)
                 running_val_loss += val_loss
 
@@ -213,7 +217,7 @@ def main(argv=None):
 
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
-    dataset = YTDataset(args.imageDir, IMAGE_SIZE)
+    dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabSize=VOCAB_SIZE)
     trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
 
     # testingDataLoader = DataLoader(

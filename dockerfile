@@ -5,5 +5,7 @@ WORKDIR yt_model
 VOLUME /mnt/output
 
 RUN ["pip", "install", "-r", "requirements-dev.txt"]
-# ENTRYPOINT ["python3", "run.py", "-o", "/mnt/output"]
-ENTRYPOINT ["python3", "modelTraining.py", "-o", "/mnt/output"]
+RUN ["python", "-m", "spacy", "download", "en_core_web_sm"]
+
+# ENTRYPOINT ["python", "run.py", "-o", "/mnt/output"]
+ENTRYPOINT ["python", "modelTraining.py", "-o", "/mnt/output"]

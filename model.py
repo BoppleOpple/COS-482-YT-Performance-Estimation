@@ -38,12 +38,6 @@ class ThumbnailModel(torch.nn.Module):
 
         self.float()
 
-        printBox(
-            f"model loaded with {getNumParams(self)} parameters",
-            "bold",
-            "bright_magenta",
-        )
-
     # region ThumbnailModel.forward
     def forward(self, x: torch.Tensor):
         # layer0 = self.featureExtraction1(x)
@@ -77,7 +71,7 @@ class ThumbnailModel(torch.nn.Module):
 
 # region YTModel
 class YTModel(torch.nn.Module):
-    def __init__(self, w, h, vocabularySize, hiddenSize):
+    def __init__(self, w, h, vocabularySize, hiddenSize, extraParams=2):
         super().__init__()
         self.nonLinear = torch.nn.ReLU()
         self.flatten = torch.nn.Flatten()
@@ -93,7 +87,9 @@ class YTModel(torch.nn.Module):
         thumbnailModel = ThumbnailModel(w, h)
         self.thumbnailEncoder = thumbnailModel.features[:-1]  # 16 channels
 
-        self.fc1 = torch.nn.Linear(16 + self.text_rnn.num_layers * hiddenSize + 1, 64)
+        self.fc1 = torch.nn.Linear(
+            16 + self.text_rnn.num_layers * hiddenSize + extraParams, 64
+        )
         self.fc2 = torch.nn.Linear(self.fc1.out_features, 32)
         self.fc3 = torch.nn.Linear(self.fc2.out_features, 16)
         self.fc4 = torch.nn.Linear(self.fc3.out_features, 3)
@@ -110,12 +106,20 @@ class YTModel(torch.nn.Module):
 
         self.float()
 
+        printBox(
+            f"model loaded with {getNumParams(self)} parameters",
+            "bold",
+            "bright_magenta",
+        )
+
     # region YTModel.forward
     def forward(self, thumbnails, encodedTitles, x):
         thumbnailFeatures = self.thumbnailEncoder(thumbnails)
-        _, titleFeatures = self.text_rnn(encodedTitles)
+        _, hiddenOutput = self.text_rnn(encodedTitles)
 
-        features = torch.concat((thumbnailFeatures, titleFeatures, x))
+        titleFeatures = torch.swapaxes(hiddenOutput, 0, 1)
+
+        features = torch.cat((thumbnailFeatures, self.flatten(titleFeatures), x), dim=1)
 
         return self.linearLayers(features)
 

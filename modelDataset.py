@@ -117,7 +117,7 @@ class YTDataset(Dataset):
         self.preprocessedText = list(map(self.textField.preprocess, rawData[:, 1]))
 
         self.textField.build_vocab(
-            self.preprocessedText, max_size=10000, vectors="glove.6B.100d"
+            self.preprocessedText, max_size=vocabSize - 5, vectors="glove.6B.100d"
         )
 
         # self.data[0]: time since post
@@ -167,15 +167,15 @@ class YTDataset(Dataset):
         # TODO: move this to the actual right part of the program
         paddedTitles = self.textField.pad(titles)
         numericalizedTitles = self.textField.numericalize(paddedTitles)
-        expandedTitles = np.zeros(
-            (numericalizedTitles.shape[0], self.vocabSize, numericalizedTitles.shape[1])
+        expandedTitles = torch.zeros(
+            (*numericalizedTitles.shape, self.vocabSize), dtype=torch.float32
         )
 
         for idx, val in np.ndenumerate(numericalizedTitles):
-            expandedTitles[idx[0], val, idx[1]] = 1
+            expandedTitles[idx[0], idx[1], val] = 1
 
         for i in range(len(batch)):
-            batch[i] = [*batch[i][:1], numericalizedTitles[i], *batch[i][2:]]
+            batch[i] = [*batch[i][:1], expandedTitles[i], *batch[i][2:]]
 
         return default_collate(batch)
 
