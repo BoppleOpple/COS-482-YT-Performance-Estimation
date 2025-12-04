@@ -5,6 +5,7 @@ tqdm
 requests
 torch
 torchvision
+torchtext
 matplotlib
 numpy
 scipy
