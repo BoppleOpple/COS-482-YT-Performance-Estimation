@@ -8,4 +8,4 @@ RUN ["pip", "install", "-r", "requirements-dev.txt"]
 RUN ["python", "-m", "spacy", "download", "en_core_web_sm"]
 
 # ENTRYPOINT ["python", "run.py", "-o", "/mnt/output"]
-ENTRYPOINT ["python", "modelTraining.py", "-o", "/mnt/output"]
+ENTRYPOINT ["python", "run.py", "-o", "/mnt/output"]

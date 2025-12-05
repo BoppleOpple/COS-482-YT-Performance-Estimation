@@ -8,7 +8,7 @@ from torch.utils.data import random_split
 
 from modelDataset import YTDataset
 from printHelpers import printANSI
-from tuner import tune, LinearRange, NormalRange, Selection
+from tuner import tune, LinearRange, Selection
 
 # region arguments
 parser = argparse.ArgumentParser(
@@ -70,9 +70,10 @@ def main(argv=None):
             hyperparams = pickle.load(f)
     else:
         hyperparams = {
-            "lr": NormalRange(5e-6, 1e-5),
+            "rnn_hidden_layer_size": Selection([int(i) for i in range(128, 513, 64)]),
+            "lr": LinearRange(5e-6, 1e-5),
             "gamma": LinearRange(0.5, 0.75),
-            "batch_size": Selection([int(i) for i in reversed(range(2, 8, 2))]),
+            "batch_size": Selection([int(i) for i in reversed(range(2, 12, 2))]),
         }
 
     tune(
@@ -82,6 +83,7 @@ def main(argv=None):
         sessionPath,
         epochs=args.epochs,
         parameterSamples=5,
+        collate_fn=dataset.collate_fn,
     )
 
 

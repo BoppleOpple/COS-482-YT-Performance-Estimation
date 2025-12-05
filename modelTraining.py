@@ -95,7 +95,9 @@ def train(
         "cuda:0" if torch.cuda.is_available() else "cpu"
     ),
 ):
-    model = YTModel(*IMAGE_SIZE, VOCAB_SIZE, 128).to(device)
+    model = YTModel(*IMAGE_SIZE, VOCAB_SIZE, int(config["rnn_hidden_layer_size"])).to(
+        device
+    )
 
     trainingDataLoader = DataLoader(
         trainingSet,

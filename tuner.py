@@ -151,6 +151,7 @@ def tune(
     epochs: int = 5,
     parameterSamples: int = 5,
     method: str = "cascade",
+    collate_fn=None,
 ):
     os.makedirs(sessionDir, exist_ok=True)
 
@@ -201,6 +202,7 @@ def tune(
                         trainingSet,
                         validationSet,
                         trialDir,
+                        collate_fn=collate_fn,
                     )
 
                 paramLosses[i, 0] = trainLosses
