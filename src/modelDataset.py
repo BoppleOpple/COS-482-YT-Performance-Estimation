@@ -50,7 +50,11 @@ class YTDataset(Dataset):
 
     # region __init__
     def __init__(
-        self, imageDir="./output/thumbnails", imageSize=(640, 360), vocabDims=300
+        self,
+        imageDir="./output/thumbnails",
+        imageSize=(640, 360),
+        vocabDims=300,
+        endDateTime: datetime.datetime = datetime.datetime.now(),
     ):
         load_dotenv()
         self.vocab = torchtext.vocab.GloVe(dim=vocabDims)
@@ -88,8 +92,10 @@ class YTDataset(Dataset):
                     access_information.video_id = created_by.video_id \
                     AND created_by.channel_id = channels.id \
                     AND access_information.video_id = videos.id \
+                    AND access_information.query_time < %s \
                 );\
-            "
+            ",
+                [endDateTime],
             )
             result = cursor.fetchall()
 

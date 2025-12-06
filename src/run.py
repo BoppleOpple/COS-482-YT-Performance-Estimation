@@ -1,3 +1,4 @@
+import os
 import argparse
 from pathlib import Path
 import pickle
@@ -28,7 +29,7 @@ parser.add_argument("--validation_epochs", default=None, type=int)
 # endregion
 
 IMAGE_SIZE = (640, 360)
-VOCAB_SIZE = 10000
+VOCAB_DIMS = 300
 
 
 # region Main Execution
@@ -36,29 +37,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     currentTime = datetime.datetime.now()
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    rng = torch.Generator().manual_seed(1)
-
-    printANSI(f"running torch on {device}", "bold", "bright_magenta")
-
-    dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabSize=VOCAB_SIZE)
-    trainingSet, valSet, testingSet = random_split(
-        dataset, (0.75, 0.10, 0.15), generator=rng
-    )
-
-    # testingDataLoader = DataLoader(
-    #     testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
-    # )
-
-    # TODO: add flag for displaying these things
-    # gridSize = (4, 6)
-    # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
-    # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
-
     sessionName = args.sessionName or f"session_{currentTime.isoformat()}"
 
     sessionPath: Path = args.outDir / sessionName
     hyperparameterPath: Path = sessionPath / "tuningParams.pkl"
+    dbInfoPath: Path = sessionPath / "dataInfo.json"
+
+    os.makedirs(sessionPath, exist_ok=True)
 
     if hyperparameterPath.exists():
         printANSI(
@@ -75,6 +60,43 @@ def main(argv=None):
             "gamma": LinearRange(0.5, 0.75),
             "batch_size": Selection([int(i) for i in reversed(range(2, 12, 2))]),
         }
+
+    if dbInfoPath.exists():
+        with open(dbInfoPath, "rb") as f:
+            dbInfo = pickle.load(f)
+    else:
+        dbInfo = {
+            "image_size": IMAGE_SIZE,
+            "vocab_dims": VOCAB_DIMS,
+            "time": currentTime,
+        }
+        with open(dbInfoPath, "wb") as f:
+            pickle.dump(dbInfo, f)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    rng = torch.Generator().manual_seed(1)
+
+    printANSI(f"running torch on {device}", "bold", "bright_magenta")
+
+    dataset = YTDataset(
+        args.imageDir,
+        imageSize=dbInfo["image_size"],
+        vocabDims=dbInfo["vocab_dims"],
+        endDateTime=dbInfo["time"],
+    )
+
+    trainingSet, valSet, testingSet = random_split(
+        dataset, (0.75, 0.10, 0.15), generator=rng
+    )
+
+    # testingDataLoader = DataLoader(
+    #     testingSet, batch_size=args.batch_size, shuffle=True, num_workers=0
+    # )
+
+    # TODO: add flag for displaying these things
+    # gridSize = (4, 6)
+    # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
+    # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
     tune(
         hyperparams,

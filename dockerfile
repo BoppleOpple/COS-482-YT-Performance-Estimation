@@ -15,5 +15,5 @@ VOLUME /mnt/thumbnails
 RUN ["pip", "install", "-r", "requirements-dev.txt"]
 RUN ["python", "-m", "spacy", "download", "en_core_web_sm"]
 
-# ENTRYPOINT ["python", "run.py", "-i", "/mnt/thumbnails" "-o", "/mnt/output"]
-ENTRYPOINT ["python", "src/modelTraining.py", "-i", "/mnt/thumbnails", "-o", "/mnt/output"]
+ENTRYPOINT ["python", "src/run.py", "-i", "/mnt/thumbnails", "-o", "/mnt/output"]
+# ENTRYPOINT ["python", "src/modelTraining.py", "-i", "/mnt/thumbnails", "-o", "/mnt/output"]
