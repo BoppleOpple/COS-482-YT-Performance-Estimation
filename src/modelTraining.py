@@ -29,6 +29,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument_group("File I/O")
 parser.add_argument("-i", "--imageDir", default="./output/thumbnails", type=Path)
 parser.add_argument("-o", "--outDir", default="./output", type=Path)
+parser.add_argument("-s", "--sessionName", default=None, type=str)
 
 parser.add_argument_group("Training options")
 parser.add_argument("-e", "--epochs", default=5, type=int)
@@ -212,7 +213,13 @@ def train(
 # region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
+
     currentTime = datetime.datetime.now()
+
+    if args.sessionName:
+        sessionDir = args.outDir / args.sessionName
+    else:
+        sessionDir = args.outDir / f"train_{currentTime.isoformat()}"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator().manual_seed(1)
@@ -243,7 +250,7 @@ def main(argv=None):
         args.epochs,
         trainingSet,
         testingSet,
-        args.outDir / f"train_{currentTime.isoformat()}",
+        sessionDir,
         collate_fn=dataset.collate_fn,
     )
 
@@ -254,7 +261,7 @@ def main(argv=None):
     plt.legend()
 
     fig.show()
-    fig.savefig(args.outDir / "losses.png")
+    fig.savefig(sessionDir / "losses.png")
 
 
 # endregion
