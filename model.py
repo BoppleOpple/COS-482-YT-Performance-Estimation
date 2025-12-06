@@ -71,13 +71,13 @@ class ThumbnailModel(torch.nn.Module):
 
 # region YTModel
 class YTModel(torch.nn.Module):
-    def __init__(self, w, h, vocabularySize, hiddenSize, extraParams=2):
+    def __init__(self, w, h, vocabularyDim, hiddenSize, extraParams=2):
         super().__init__()
         self.nonLinear = torch.nn.ReLU()
         self.flatten = torch.nn.Flatten()
 
         self.text_rnn = torch.nn.RNN(
-            input_size=vocabularySize,
+            input_size=vocabularyDim,
             hidden_size=hiddenSize,
             num_layers=2,
             nonlinearity="relu",

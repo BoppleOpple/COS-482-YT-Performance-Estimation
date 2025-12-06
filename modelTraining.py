@@ -17,7 +17,7 @@ from printHelpers import printANSI
 from checkpoint import loadLatestCheckpoint, saveLatestCheckpoint
 
 IMAGE_SIZE = (640, 360)
-VOCAB_SIZE = 10000
+VOCAB_DIMS = 300
 
 # region arguments
 parser = argparse.ArgumentParser(
@@ -95,7 +95,7 @@ def train(
         "cuda:0" if torch.cuda.is_available() else "cpu"
     ),
 ):
-    model = YTModel(*IMAGE_SIZE, VOCAB_SIZE, int(config["rnn_hidden_layer_size"])).to(
+    model = YTModel(*IMAGE_SIZE, VOCAB_DIMS, int(config["rnn_hidden_layer_size"])).to(
         device
     )
 
@@ -219,7 +219,7 @@ def main(argv=None):
 
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
-    dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabSize=VOCAB_SIZE)
+    dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabDims=VOCAB_DIMS)
     trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
 
     # testingDataLoader = DataLoader(
@@ -231,7 +231,12 @@ def main(argv=None):
     # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
     # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
-    hyperparams = {"batch_size": 6, "lr": 1e-06, "gamma": 0.8}
+    hyperparams = {
+        "rnn_hidden_layer_size": 448,
+        "lr": 9.999999999999999e-06,
+        "gamma": 0.6875,
+        "batch_size": 8,
+    }
 
     losses, v_losses = train(
         hyperparams,

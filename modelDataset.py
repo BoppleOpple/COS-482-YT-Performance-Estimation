@@ -46,22 +46,17 @@ def secondsDifference(duration: datetime.timedelta):
 # region YTDataset
 class YTDataset(Dataset):
     images = dict()
-    textField = torchtext.data.Field(
-        tokenize="spacy",
-        tokenizer_language="en_core_web_sm",
-        batch_first=True,
-        pad_first=True,
-    )
+    tokenizer = torchtext.data.get_tokenizer("spacy", language="en_core_web_sm")
 
     # region __init__
     def __init__(
-        self, imageDir="./output/thumbnails", imageSize=(640, 360), vocabSize=10000
+        self, imageDir="./output/thumbnails", imageSize=(640, 360), vocabDims=300
     ):
         load_dotenv()
+        self.vocab = torchtext.vocab.GloVe(dim=vocabDims)
 
         self.imageSize = imageSize
         self.imageDir = imageDir
-        self.vocabSize = vocabSize
 
         dbConnection: psycopg2.extensions.connection = psycopg2.connect(
             host=os.environ["SQL_HOST"],
@@ -114,11 +109,7 @@ class YTDataset(Dataset):
 
         printANSI("building vocab...", "bold", "bright_blue")
 
-        self.preprocessedText = list(map(self.textField.preprocess, rawData[:, 1]))
-
-        self.textField.build_vocab(
-            self.preprocessedText, max_size=vocabSize - 5, vectors="glove.6B.100d"
-        )
+        self.tokens = list(map(self.tokenizer, rawData[:, 1]))
 
         # self.data[0]: time since post
         # self.data[1]: subscriber count
@@ -154,7 +145,7 @@ class YTDataset(Dataset):
 
         return (
             torch.tensor(selectedImages),
-            self.preprocessedText[idx],
+            self.tokens[idx],
             torch.tensor(self.data[idx, :-3]),
             torch.tensor(self.data[idx, -3:]),
         )
@@ -162,20 +153,18 @@ class YTDataset(Dataset):
     # endregion
 
     def collate_fn(self, batch):
-        titles = [sample[1] for sample in batch]
-
-        # TODO: move this to the actual right part of the program
-        paddedTitles = self.textField.pad(titles)
-        numericalizedTitles = self.textField.numericalize(paddedTitles)
-        expandedTitles = torch.zeros(
-            (*numericalizedTitles.shape, self.vocabSize), dtype=torch.float32
-        )
-
-        for idx, val in np.ndenumerate(numericalizedTitles):
-            expandedTitles[idx[0], idx[1], val] = 1
+        titleTokens: list[torch.tensor] = [sample[1] for sample in batch]
+        maxLength = max(len(tokens) for tokens in titleTokens)
 
         for i in range(len(batch)):
-            batch[i] = [*batch[i][:1], expandedTitles[i], *batch[i][2:]]
+            titleVectors = self.vocab.get_vecs_by_tokens(titleTokens[i])
+
+            paddedTitleVectors = torch.zeros(
+                (maxLength, titleVectors.shape[1]), dtype=torch.float32
+            )
+            paddedTitleVectors[: titleVectors.shape[0], :] = titleVectors
+
+            batch[i] = [*batch[i][:1], paddedTitleVectors, *batch[i][2:]]
 
         return default_collate(batch)
 
