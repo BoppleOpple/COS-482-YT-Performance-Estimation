@@ -13,4 +13,5 @@ sudo docker run -it \
     --ipc=host \
     --shm-size 16G \
     --mount type=bind,src=./output/container,dst=/mnt/output \
+    --mount type=bind,src=./output/thumbnails,dst=/mnt/thumbnails \
     yt_model $@

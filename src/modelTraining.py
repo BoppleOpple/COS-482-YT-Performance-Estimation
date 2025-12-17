@@ -5,18 +5,19 @@ import datetime
 import argparse
 
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split, default_collate
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
 import matplotlib.pyplot as plt
 
 from modelDataset import YTDataset
-from model import ThumbnailModel
+from model import YTModel
 from printHelpers import printANSI
 from checkpoint import loadLatestCheckpoint, saveLatestCheckpoint
 
 IMAGE_SIZE = (640, 360)
+VOCAB_DIMS = 300
 
 # region arguments
 parser = argparse.ArgumentParser(
@@ -28,6 +29,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument_group("File I/O")
 parser.add_argument("-i", "--imageDir", default="./output/thumbnails", type=Path)
 parser.add_argument("-o", "--outDir", default="./output", type=Path)
+parser.add_argument("-s", "--sessionName", default=None, type=str)
 
 parser.add_argument_group("Training options")
 parser.add_argument("-e", "--epochs", default=5, type=int)
@@ -49,7 +51,9 @@ def trainOnce(
 
     batch = 1
 
-    for inputs, groundTruth in tqdm(iter(dataLoader)):
+    for thumbnails, encodedTitles, inputs, groundTruth in tqdm(iter(dataLoader)):
+        thumbnails = thumbnails.to(device)
+        encodedTitles = encodedTitles.to(device)
         inputs = inputs.to(device)
         groundTruth = groundTruth.to(device)
 
@@ -57,10 +61,7 @@ def trainOnce(
         optimizer.zero_grad()
 
         # Make predictions for this batch
-        output = model(inputs)
-
-        # print(output)
-        # print(groundTruth)
+        output = model(thumbnails, encodedTitles, inputs)
 
         # Compute the loss and its gradients
         loss = criterion(output, groundTruth)
@@ -90,17 +91,28 @@ def train(
     trainingSet: Dataset,
     valSet: Dataset,
     trialDir: Path,
+    collate_fn=default_collate,
     device: torch.device = torch.device(
         "cuda:0" if torch.cuda.is_available() else "cpu"
     ),
 ):
-    model = ThumbnailModel(*IMAGE_SIZE).to(device)
+    model = YTModel(*IMAGE_SIZE, VOCAB_DIMS, int(config["rnn_hidden_layer_size"])).to(
+        device
+    )
 
     trainingDataLoader = DataLoader(
-        trainingSet, batch_size=int(config["batch_size"]), shuffle=True, num_workers=0
+        trainingSet,
+        batch_size=int(config["batch_size"]),
+        shuffle=True,
+        num_workers=0,
+        collate_fn=collate_fn,
     )
     valDataLoader = DataLoader(
-        valSet, batch_size=int(config["batch_size"]), shuffle=True, num_workers=0
+        valSet,
+        batch_size=int(config["batch_size"]),
+        shuffle=True,
+        num_workers=0,
+        collate_fn=collate_fn,
     )
 
     criterion = torch.nn.MSELoss()
@@ -150,11 +162,15 @@ def train(
         print("validating...")
         # Disable gradient computation and reduce memory consumption.
         with torch.no_grad():
-            for val_inputs, val_labels in tqdm(iter(valDataLoader)):
+            for val_thumbnails, val_titles, val_inputs, val_labels in tqdm(
+                iter(valDataLoader)
+            ):
+                val_thumbnails = val_thumbnails.to(device)
+                val_titles = val_titles.to(device)
                 val_inputs = val_inputs.to(device)
                 val_labels = val_labels.to(device)
 
-                val_outputs = model(val_inputs)
+                val_outputs = model(val_thumbnails, val_titles, val_inputs)
                 val_loss = criterion(val_outputs, val_labels)
                 running_val_loss += val_loss
 
@@ -197,14 +213,20 @@ def train(
 # region Main Execution
 def main(argv=None):
     args = parser.parse_args(argv)
+
     currentTime = datetime.datetime.now()
+
+    if args.sessionName:
+        sessionDir = args.outDir / args.sessionName
+    else:
+        sessionDir = args.outDir / f"train_{currentTime.isoformat()}"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator().manual_seed(1)
 
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
-    dataset = YTDataset(args.imageDir, IMAGE_SIZE)
+    dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabDims=VOCAB_DIMS)
     trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
 
     # testingDataLoader = DataLoader(
@@ -216,14 +238,20 @@ def main(argv=None):
     # index = np.random.randint(0, len(dataset) - np.prod(gridSize))
     # showGrid(gridSize, dataset[index:index+np.prod(gridSize)][0])
 
-    hyperparams = {"batch_size": 16, "lr": 1e-4, "gamma": 0.9}
+    hyperparams = {
+        "rnn_hidden_layer_size": 448,
+        "lr": 9.999999999999999e-06,
+        "gamma": 0.6875,
+        "batch_size": 8,
+    }
 
     losses, v_losses = train(
         hyperparams,
         args.epochs,
         trainingSet,
         testingSet,
-        args.outDir / f"session_{currentTime.isoformat()}",
+        sessionDir,
+        collate_fn=dataset.collate_fn,
     )
 
     fig = plt.figure()
@@ -233,7 +261,7 @@ def main(argv=None):
     plt.legend()
 
     fig.show()
-    fig.savefig(f"{args.outDir}/losses.png")
+    fig.savefig(sessionDir / "losses.png")
 
 
 # endregion

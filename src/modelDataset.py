@@ -1,12 +1,14 @@
 import os
 import psycopg2
+import datetime
 from threading import Thread
 from tqdm import tqdm
 import numpy as np
 from dotenv import load_dotenv
 
 import torch
-from torch.utils.data import Dataset
+import torchtext
+from torch.utils.data import Dataset, default_collate
 
 import matplotlib.pyplot as plt
 import PIL.Image
@@ -33,17 +35,29 @@ def validThumbnail(imageDir: str, vid: str):
     return not brokenThumbnailImage == PIL.Image.open(imagePath)
 
 
+@np.vectorize()
+def secondsDifference(duration: datetime.timedelta):
+    return duration.total_seconds()
+
+
 # endregion
 
 
 # region YTDataset
 class YTDataset(Dataset):
     images = dict()
-    secondsDifference = np.vectorize(lambda duration: duration.total_seconds())
+    tokenizer = torchtext.data.get_tokenizer("spacy", language="en_core_web_sm")
 
     # region __init__
-    def __init__(self, imageDir="./output/thumbnails", imageSize=(640, 360)):
+    def __init__(
+        self,
+        imageDir="./output/thumbnails",
+        imageSize=(640, 360),
+        vocabDims=300,
+        endDateTime: datetime.datetime = datetime.datetime.now(),
+    ):
         load_dotenv()
+        self.vocab = torchtext.vocab.GloVe(dim=vocabDims)
 
         self.imageSize = imageSize
         self.imageDir = imageDir
@@ -66,6 +80,7 @@ class YTDataset(Dataset):
                 "\
                 SELECT \
                     access_information.video_id, \
+                    title, \
                     posted_time, \
                     query_time, \
                     subscribers, \
@@ -77,8 +92,10 @@ class YTDataset(Dataset):
                     access_information.video_id = created_by.video_id \
                     AND created_by.channel_id = channels.id \
                     AND access_information.video_id = videos.id \
+                    AND access_information.query_time < %s \
                 );\
-            "
+            ",
+                [endDateTime],
             )
             result = cursor.fetchall()
 
@@ -96,24 +113,25 @@ class YTDataset(Dataset):
 
         self.thumbnailIDs = rawData[:, 0:1]
 
-        print(rawData[:, 3:4].dtype)
-        print(rawData[:, -3:].dtype)
+        printANSI("building vocab...", "bold", "bright_blue")
+
+        self.tokens = list(map(self.tokenizer, rawData[:, 1]))
+
+        # self.data[0]: time since post
+        # self.data[1]: subscriber count
+        # self.data[2]: view count
+        # self.data[3]: like count
+        # self.data[4]: comment count
         self.data = np.concat(
             (
-                self.secondsDifference(rawData[:, 2:3] - rawData[:, 1:2]).astype(
-                    np.float32
-                ),
-                rawData[:, 3:4].astype(np.float32),
+                secondsDifference(rawData[:, 3:4] - rawData[:, 2:3]).astype(np.float32),
+                rawData[:, 4:5].astype(np.float32),
                 rawData[:, -3:].astype(np.float32),
             ),
-            1,
+            axis=1,
         )
 
         self.data = (self.data - np.mean(self.data, 0)) / np.std(self.data, 0)
-
-        print()
-        print(self.data.shape)
-        print(self.data[:5])
 
         # load the thumbnails into a dictionary
 
@@ -131,9 +149,30 @@ class YTDataset(Dataset):
     def __getitem__(self, idx):
         selectedImages = self.loadImages(self.thumbnailIDs[idx, 0])
 
-        return torch.tensor(selectedImages), torch.tensor(self.data[idx, -3:])
+        return (
+            torch.tensor(selectedImages),
+            self.tokens[idx],
+            torch.tensor(self.data[idx, :-3]),
+            torch.tensor(self.data[idx, -3:]),
+        )
 
     # endregion
+
+    def collate_fn(self, batch):
+        titleTokens: list[torch.tensor] = [sample[1] for sample in batch]
+        maxLength = max(len(tokens) for tokens in titleTokens)
+
+        for i in range(len(batch)):
+            titleVectors = self.vocab.get_vecs_by_tokens(titleTokens[i])
+
+            paddedTitleVectors = torch.zeros(
+                (maxLength, titleVectors.shape[1]), dtype=torch.float32
+            )
+            paddedTitleVectors[: titleVectors.shape[0], :] = titleVectors
+
+            batch[i] = [*batch[i][:1], paddedTitleVectors, *batch[i][2:]]
+
+        return default_collate(batch)
 
     # region LoadImages
     def loadImages(self, vids):

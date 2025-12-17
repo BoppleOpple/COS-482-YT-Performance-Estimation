@@ -1,4 +1,5 @@
 .venv/
+.vector_cache/
 database/
 output/
 out.txt
