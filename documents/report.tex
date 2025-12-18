@@ -9,9 +9,46 @@
 		{Liam Hillery} & {\LARGE \textbf{YouTube Video Performance Estimation}} & \today\\
 		{\footnotesize {COS 482}} & {\footnotesize {Extimating Video Success from API Data}} & \\\hline
 	\end{tabularx}\\
-	
+
 	\section{Abstract}
-	\section{Purpose}
+	YouTube is a success story for advertising in the modern age. In 2020, the company revealed
+	that approximately 500 hours of footage are uploaded every minute (https://blog.youtube/news-and-events/youtube-at-15-my-personal-journey/), which creates a problem for
+	creators and advertisers: How can creators market and modify their videos to be more successful
+	on the platform, and how can advertisers select videos that will garner the maximum amount of
+	attention? This report outlines our method of predicting the success of a video based on
+	thumbnail, title, posting time, and channel size.
+
 	\section{Methodology}
+	Over the course of about 50 days, we used the YouTube API to collect data on over 17,000
+	trending videos. We stored our text and numerical data in a PostgreSQL Database, and download
+	their thumbnail images a a later point. Once these data had been collected, we trained an
+	artificial neural network to estimate the number of comments, views, and likes the video
+	recieved.
+
+	\subsection{Database Design}
+	The database we used is relatively straightforward, with some special consideration for the
+	temporal nature of our data. Since the data are changing as time goes on, and videos can appear
+	in trending multiple times, we made allowances for multiple observations of the same video
+	at different times or under different categories by separating the time-specific information
+	from the rest of the data.
+
+	\subsection{Machine Learning Architecture}
+	To perform the regression, we uesd an artificial neural network comprised of 3 main components.
+	The first component handles the image data, and consists of the encoding layers of MobileNet
+	V2. This translates a $m \times n$ image tensor into a $\left\lceil\frac{m}{32}\right\rceil
+	\times \left\lceil\frac{n}{32}\right\rceil \times 160$ tensor. The second component handles
+	natural language, such as the titles of videos. We used the spaCy tokenizer and GloVe vector
+	embeddings with 300 dimensions to preprocess each batch of data. After preprocessing, we
+	passed the tensor to a RNN, and selected an output size of $2 \times 448$ through
+	hyperparameter tuning. Finally, our numerical data (time since posting, subscriber count) was
+	normalized and passed to a fully connected network along with the features extracted from the
+	thumbnails and titles. The result was a vector estimating the number of views, likes, and
+	comments the video recieved.
+
 	\section{Results}
+
+	\section{Future Work}
+	In the future, we would like to modify the algorithms used for splitting the data and tuning
+	hyperparameters. While we saw some success training this model, this solution is both expensive
+	and poorly optimized, which leads to poor performance on such a complex task.
 \end{document}
