@@ -227,6 +227,10 @@ def main(argv=None):
     printANSI(f"running torch on {device}", "bold", "bright_magenta")
 
     dataset = YTDataset(args.imageDir, imageSize=IMAGE_SIZE, vocabDims=VOCAB_DIMS)
+
+    # TODO: THIS IS THE BIG BIG ERROR
+    # because the same video has multiple occurances, just splitting the data DOESNT WORK
+    # need each set to have unique videos in them!!!
     trainingSet, testingSet = random_split(dataset, (0.85, 0.15), generator=rng)
 
     # testingDataLoader = DataLoader(

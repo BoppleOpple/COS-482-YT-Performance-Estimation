@@ -1,5 +1,6 @@
 import os
 import argparse
+import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -37,20 +38,116 @@ def subs_views_scatter(args, cursor: psycopg2.extensions.cursor):
             access_information.video_id = created_by.video_id \
             AND created_by.channel_id = channels.id \
             AND access_information.video_id = videos.id \
+                AND subscribers IS NOT NULL \
         );\
     ",
     )
     data: np.ndarray = np.array(cursor.fetchall())
 
+    x = data[:, 0]
+    y = data[:, 1]
+
     fig = plt.figure(figsize=(12, 16), dpi=300)
     ax = fig.add_axes((0.1, 0.1, 0.8, 0.8))
     ax.set_xscale("log")
     ax.set_yscale("log")
+    ax.set_xticks([pow(10, n) for n in range(0, int(np.ceil(np.log10(np.max(x)))))])
+
+    ax.set_title("Views vs. Subscriber Count")
+    ax.set_xlabel("Subscribers")
+    ax.set_ylabel("Views")
+
+    ax.grid(True, linestyle="dashdot")
 
     # plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
-    plt.scatter(data[:, 0], data[:, 1], s=5, color="#6496fa60")
+    plt.scatter(x, y, s=5, color="#6496fa60")
 
     fig.savefig(args.outDir / "subs_vs_views.png")
+
+
+# endregion
+
+
+# region uptime_views_scatter
+def uptime_views_scatter(args, cursor: psycopg2.extensions.cursor):
+    cursor.execute(
+        "\
+        SELECT DISTINCT ON (videos.id) \
+            posted_time, \
+            query_time, \
+            access_information.views \
+        FROM access_information, created_by, channels, videos \
+        WHERE ( \
+            access_information.video_id = created_by.video_id \
+            AND created_by.channel_id = channels.id \
+            AND access_information.video_id = videos.id \
+        ) \
+        ORDER BY videos.id, access_information.views DESC;\
+    ",
+    )
+    data: np.ndarray = np.array(cursor.fetchall())
+
+    @np.vectorize()
+    def getDurationSeconds(d: datetime.timedelta):
+        return d.total_seconds()
+
+    x = getDurationSeconds(data[:, 1] - data[:, 0]) / (60 * 60 * 24)
+    y = data[:, 2]
+
+    fig = plt.figure(figsize=(16, 12), dpi=300)
+    ax = fig.add_axes((0.1, 0.1, 0.8, 0.8))
+    ax.set_xticks(range(0, int(max(x))))
+    # ax.set_xscale("log")
+    # ax.set_yscale("log")
+
+    ax.set_title("Views vs. Uptime")
+    ax.set_xlabel("Time since upload (days)")
+    ax.set_ylabel("Views")
+
+    # plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
+    plt.scatter(x, y, s=5, color="#6496fa60")
+
+    fig.savefig(args.outDir / "uptime_vs_views.png")
+
+
+# endregion
+
+
+# region time_views_scatter
+def time_views_scatter(args, cursor: psycopg2.extensions.cursor):
+    cursor.execute(
+        "\
+        SELECT DISTINCT ON (videos.id) \
+            posted_time, \
+            access_information.views \
+        FROM access_information, created_by, channels, videos \
+        WHERE ( \
+            access_information.video_id = created_by.video_id \
+            AND created_by.channel_id = channels.id \
+            AND access_information.video_id = videos.id \
+        ) \
+        ORDER BY videos.id, access_information.views DESC;\
+    ",
+    )
+    data: np.ndarray = np.array(cursor.fetchall())
+
+    @np.vectorize()
+    def getSecondsSinceMidnight(d: datetime.datetime):
+        return (d.hour * 60 + d.minute) * 60 + d.second
+
+    x = getSecondsSinceMidnight(data[:, 0]) / (60 * 60)
+    y = data[:, 1]
+
+    fig = plt.figure(figsize=(12, 16), dpi=300)
+    ax = fig.add_axes((0.1, 0.1, 0.8, 0.8))
+    ax.set_xticks(range(0, 24))
+    # ax.set_xscale("log")
+    # ax.set_yscale("log")
+
+    # plt.plot(range(len(v_losses)), v_losses, label="validation", color="#fa96c8")
+    plt.scatter(x, y, s=5, color="#6496fa60")
+
+    fig.savefig(args.outDir / "time_vs_views.png")
 
 
 # endregion
@@ -106,6 +203,41 @@ def views_hist(args, cursor: psycopg2.extensions.cursor, percentCaptured: float 
 # endregion
 
 
+# region time_hist
+def time_hist(args, cursor: psycopg2.extensions.cursor):
+    cursor.execute(
+        "\
+        SELECT DISTINCT ON (videos.id) \
+            posted_time \
+        FROM access_information, created_by, channels, videos \
+        WHERE ( \
+            access_information.video_id = created_by.video_id \
+            AND created_by.channel_id = channels.id \
+            AND access_information.video_id = videos.id \
+        ) \
+        ORDER BY videos.id, access_information.views DESC;\
+    ",
+    )
+    data: np.ndarray = np.array(cursor.fetchall())
+
+    @np.vectorize()
+    def getSecondsSinceMidnight(d: datetime.datetime):
+        return (d.hour * 60 + d.minute) * 60 + d.second
+
+    x = getSecondsSinceMidnight(data) / (60 * 60)
+
+    fig = plt.figure(dpi=300)
+    ax = fig.add_axes((0.1, 0.1, 0.8, 0.8))
+    ax.set_xticks(range(0, 24))
+
+    plt.hist(x, bins=120)
+
+    fig.savefig(args.outDir / "time_hist.png")
+
+
+# endregion
+
+
 # region Main Execution
 def main(argv=None):
     load_dotenv()
@@ -121,8 +253,12 @@ def main(argv=None):
 
     with dbConnection.cursor() as cursor:
         subs_views_scatter(args, cursor)
+        time_views_scatter(args, cursor)
+        uptime_views_scatter(args, cursor)
+
         subs_hist(args, cursor)
         views_hist(args, cursor, percentCaptured=0.1)
+        time_hist(args, cursor)
 
     dbConnection.commit()
     dbConnection.close()
